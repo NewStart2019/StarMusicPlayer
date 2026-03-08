@@ -4,9 +4,10 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host 0.0.0.0",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "serve": "node server/server.js --root D:/个人文件夹/音乐 --port 8080"
   },
   "dependencies": {
     "vue": "^3.5.25"

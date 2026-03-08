@@ -196,18 +196,21 @@ const THEMES = [
 const currentThemeId = ref('cyber')
 const showThemePicker = ref(false)
 
-/** 切换主题：将 CSS 变量注入到 :root */
+/** 当前主题对象 */
+const currentTheme = computed(() => THEMES.find(t => t.id === currentThemeId.value))
+
+/**
+ * 将主题变量对象转为 Vue :style 可用的内联样式对象
+ * 绑定到 .app-wrapper 上，确保 scoped CSS 中的 var() 能正确读取
+ */
+const themeVars = computed(() => currentTheme.value?.vars ?? {})
+
+/** 切换主题：只更新 currentThemeId，themeVars 自动联动 */
 const applyTheme = (themeId) => {
-  debugger
-  const theme = THEMES.find(t => t.id === themeId)
-  if (!theme) return
+  if (!THEMES.find(t => t.id === themeId)) return
   currentThemeId.value = themeId
-  const root = document.documentElement
-  Object.entries(theme.vars).forEach(([k, v]) => root.style.setProperty(k, v))
   showThemePicker.value = false
 }
-
-const currentTheme = computed(() => THEMES.find(t => t.id === currentThemeId.value))
 
 /** 主题容器 ref，用于点击外部关闭面板 */
 const themeWrapRef = ref(null)
@@ -568,7 +571,9 @@ const closePlayer = () => {
 // 生命周期
 // =============================================
 
-onMounted(() => applyTheme('cyber'))
+onMounted(() => {
+  // currentThemeId 默认 'cyber'，themeVars 自动生效，无需手动调用
+})
 
 onUnmounted(() => {
   stopAlbumRotation()
@@ -580,7 +585,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="app-wrapper">
+  <div class="app-wrapper" :style="themeVars">
     <!-- 动态背景 -->
     <div class="bg-orb orb1"></div>
     <div class="bg-orb orb2"></div>
@@ -973,40 +978,7 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-/* =============================================
-   CSS 主题变量（默认赛博霓虹，由 JS 动态覆盖）
-   ============================================= */
-.app-wrapper {
-  --t-bg: #050810;
-  --t-bg-card: rgba(255,255,255,0.04);
-  --t-bg-glass: rgba(10,15,35,0.85);
-  --t-accent1: #00f2fe;
-  --t-accent2: #4facfe;
-  --t-accent3: #00f260;
-  --t-accent4: #f953c6;
-  --t-text: #ffffff;
-  --t-text2: rgba(255,255,255,0.55);
-  --t-text3: rgba(255,255,255,0.28);
-  --t-border: rgba(0,242,254,0.18);
-  --t-orb1: #4facfe;
-  --t-orb2: #f953c6;
-  --t-orb3: #00f260;
-  --t-grid: rgba(0,242,254,0.04);
-  --t-play-bg: linear-gradient(135deg,#00f2fe,#4facfe);
-  --t-lyric-active: #00f260;
-  --t-lyric-glow: rgba(0,242,96,0.45);
-  --t-progress: linear-gradient(90deg,#00f2fe,#4facfe);
-  --t-disc-bg: radial-gradient(circle at 30% 30%,#1e2a4a,#050810 70%);
-  --t-disc-border: rgba(0,242,254,0.2);
-  --t-disc-center: linear-gradient(135deg,#00f2fe,#4facfe);
-  --t-disc-glow: rgba(0,242,254,0.15);
-  --t-label-color: rgba(0,242,254,0.6);
-  --t-folder-bg: rgba(255,185,0,0.1);
-  --t-folder-clr: #ffb900;
-  --t-audio-bg: rgba(0,242,254,0.1);
-  --t-audio-clr: #00f2fe;
-  --t-title-grad: linear-gradient(90deg,#fff 0%,rgba(0,242,254,0.9) 100%);
-}
+/* 所有主题变量通过 :style="themeVars" 内联绑定到 .app-wrapper，scoped CSS 直接消费 var(--t-*) */
 
 /* =============================================
    基础
