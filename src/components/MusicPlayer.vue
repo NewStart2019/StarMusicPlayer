@@ -235,6 +235,21 @@ const searchQuery = ref('')
 const hasFolder = ref(false)
 const errorMsg = ref('')
 
+/** 数据源模式：'local' | 'server' */
+const sourceMode = ref('local')
+
+// ── 服务器模式相关 ──────────────────────────
+/** 服务器地址输入值 */
+const serverUrl = ref('http://localhost:3000')
+/** 是否显示服务器连接面板 */
+const showServerPanel = ref(false)
+/** 服务器加载状态 */
+const serverLoading = ref(false)
+/** 服务器错误信息 */
+const serverError = ref('')
+/** 服务器原始树数据（用于目录导航） */
+const serverTree = ref(null)
+
 const playlist = ref([])
 const currentIndex = ref(-1)
 const showPlayer = ref(false)
@@ -377,15 +392,147 @@ const hasAudioInFolder = (folder) => {
   return false
 }
 
-const enterFolder = (entry) => { searchQuery.value = ''; navigateToPath(entry.path.slice(1)) }
+const enterFolder = (entry) => {
+  searchQuery.value = ''
+  if (sourceMode.value === 'server') {
+    // server 路径是从根节点名开始的完整数组，需去掉根节点名
+    navigateToServerPath(entry.path.slice(1))
+  } else {
+    navigateToPath(entry.path.slice(1))
+  }
+}
 
 const goBack = () => {
   searchQuery.value = ''
-  if (pathStack.value.length <= 1) { pathStack.value = []; navigateToPath([]) }
-  else navigateToPath(pathStack.value[pathStack.value.length - 2].path)
+  const navigate = sourceMode.value === 'server' ? navigateToServerPath : navigateToPath
+  if (pathStack.value.length <= 1) { pathStack.value = []; navigate([]) }
+  else navigate(pathStack.value[pathStack.value.length - 2].path)
 }
 
-const breadcrumbNav = (item) => { searchQuery.value = ''; navigateToPath(item.path) }
+const breadcrumbNav = (item) => {
+  searchQuery.value = ''
+  if (sourceMode.value === 'server') navigateToServerPath(item.path)
+  else navigateToPath(item.path)
+}
+
+const goRoot = () => {
+  searchQuery.value = ''
+  pathStack.value = []
+  if (sourceMode.value === 'server') navigateToServerPath([])
+  else navigateToPath([])
+}
+
+// =============================================
+// 服务器模式：连接 & 文件树转换
+// =============================================
+
+/**
+ * 连接服务器，拉取 /api/files 并构建与本地模式兼容的 entry 树
+ */
+const connectServer = async () => {
+  const base = serverUrl.value.replace(/\/$/, '')
+  serverLoading.value = true
+  serverError.value = ''
+  try {
+    const res = await fetch(`${base}/api/files?flat=0`)
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const data = await res.json()
+    if (!data.success) throw new Error(data.error || '服务器返回失败')
+
+    // 将服务器树递归转换为与本地 entry 兼容的结构
+    serverTree.value = convertServerTree(data.tree, [])
+    allEntries.value = serverTree.value
+    hasFolder.value = true
+    sourceMode.value = 'server'
+    showServerPanel.value = false
+    pathStack.value = []
+    navigateToServerPath([])
+  } catch (e) {
+    serverError.value = `连接失败：${e.message}`
+  } finally {
+    serverLoading.value = false
+  }
+}
+
+/**
+ * 递归将服务器返回的节点转换为 entry 格式
+ * 与本地 buildVirtualFS 产出的结构保持兼容
+ * @param {object} node    - 服务器节点
+ * @param {string[]} parentPath - 父路径数组（面包屑用）
+ */
+const convertServerTree = (node, parentPath) => {
+  const currentPath = [...parentPath, node.name]
+  if (node.type === 'folder') {
+    return {
+      type: 'folder',
+      name: node.name,
+      path: currentPath,
+      source: 'server',
+      children: (node.children || []).map(child => convertServerTree(child, currentPath))
+    }
+  } else {
+    return {
+      type: 'file',
+      name: node.name,
+      ext: node.ext,
+      relativePath: node.relativePath,
+      url: node.url,
+      lrc: node.lrc ?? null,   // 服务端已匹配好的歌词下载 url，null 表示无对应 lrc
+      isAudio: node.isAudio,
+      isLrc: node.isLrc,
+      source: 'server',
+      path: currentPath,
+    }
+  }
+}
+
+/**
+ * 服务器模式下通过路径数组（面包屑）导航目录
+ * 直接递归 serverTree 找到对应节点，再展示其子项
+ */
+const navigateToServerPath = (pathParts) => {
+  let node = serverTree.value
+  for (const part of pathParts) {
+    const child = node?.children?.find(c => c.name === part)
+    if (!child) break
+    node = child
+  }
+  if (!node) { currentEntries.value = []; return }
+
+  const items = (node.children || []).filter(e => {
+    if (e.type === 'folder') return hasAudioInServerFolder(e)
+    return e.isAudio
+  })
+  items.sort((a, b) => {
+    if (a.type !== b.type) return a.type === 'folder' ? -1 : 1
+    return a.name.localeCompare(b.name)
+  })
+  currentEntries.value = items
+
+  if (pathParts.length > 0) {
+    pathStack.value = pathParts.map((name, i) => ({ name, path: pathParts.slice(0, i + 1) }))
+  } else {
+    pathStack.value = []
+  }
+}
+
+const hasAudioInServerFolder = (folder) => {
+  if (!folder.children) return false
+  return folder.children.some(e =>
+      (e.type === 'file' && e.isAudio) ||
+      (e.type === 'folder' && hasAudioInServerFolder(e))
+  )
+}
+
+/** 断开服务器，回到欢迎页 */
+const disconnectServer = () => {
+  sourceMode.value = 'local'
+  hasFolder.value = false
+  serverTree.value = null
+  allEntries.value = []
+  currentEntries.value = []
+  pathStack.value = []
+}
 
 // =============================================
 // 播放控制
@@ -405,10 +552,19 @@ const loadAndPlay = async (index) => {
   if (index < 0 || index >= playlist.value.length) return
   currentIndex.value = index
   const song = playlist.value[index]
-  const url = URL.createObjectURL(song.fileObj)
   const audio = audioRef.value
+
+  // 释放旧的 blob URL（仅本地模式产生）
   if (audio.src?.startsWith('blob:')) URL.revokeObjectURL(audio.src)
-  audio.src = url
+
+  if (song.source === 'server') {
+    // 服务器模式：直接使用后端返回的完整 url
+    audio.src = song.url
+  } else {
+    // 本地模式：从 File 对象生成临时 blob URL
+    audio.src = URL.createObjectURL(song.fileObj)
+  }
+
   audio.volume = volume.value
   try {
     await audio.play()
@@ -425,17 +581,31 @@ const loadLyrics = async (song) => {
   lyrics.value = []
   currentLyricIndex.value = -1
   const lrcName = song.name.replace(/\.[^.]+$/, '') + '.lrc'
-  const dirPath = song.path.slice(1, -1)
-  let node = allEntries.value
-  for (const p of dirPath) {
-    if (node.children?.has(p)) node = node.children.get(p)
-    else { node = null; break }
-  }
-  if (node?.children?.has(lrcName)) {
-    try { lyrics.value = parseLRC(await node.children.get(lrcName).fileObj.text()) }
-    catch (e) { console.error('LRC读取失败:', e) }
+
+  if (song.source === 'server') {
+    // 服务端已在 /api/files 响应中匹配好 lrc 字段，直接 fetch
+    if (song.lrc) {
+      try {
+        const text = await fetch(song.lrc).then(r => r.text())
+        lyrics.value = parseLRC(text)
+      } catch (e) { console.error('LRC fetch 失败:', e) }
+    }
+  } else {
+    // 本地模式：从虚拟文件树中找同名 .lrc 的 File 对象
+    const dirPath = song.path.slice(1, -1)
+    let node = allEntries.value
+    for (const p of dirPath) {
+      if (node.children?.has(p)) node = node.children.get(p)
+      else { node = null; break }
+    }
+    if (node?.children?.has(lrcName)) {
+      try { lyrics.value = parseLRC(await node.children.get(lrcName).fileObj.text()) }
+      catch (e) { console.error('LRC 读取失败:', e) }
+    }
   }
 }
+
+
 
 const togglePlay = () => {
   const audio = audioRef.value
@@ -616,6 +786,19 @@ onUnmounted(() => {
             <input v-model="searchQuery" class="search-input" type="text" placeholder="搜索文件..."/>
           </div>
 
+          <!-- 数据源徽标（已加载时显示）-->
+          <div v-if="hasFolder" class="source-badge" :class="sourceMode">
+            <svg v-if="sourceMode === 'server'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/>
+              <line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/>
+            </svg>
+            <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+            </svg>
+            <span>{{ sourceMode === 'server' ? '服务器' : '本地' }}</span>
+            <button class="badge-close" @click="sourceMode === 'server' ? disconnectServer() : (hasFolder = false)" title="断开">✕</button>
+          </div>
+
           <!-- 主题切换 -->
           <div class="theme-wrap" ref="themeWrapRef">
             <button class="btn-theme" @click="showThemePicker = !showThemePicker">
@@ -657,13 +840,44 @@ onUnmounted(() => {
             <div class="vinyl-center"></div>
           </div>
           <h1 class="welcome-title">开始你的音乐之旅</h1>
-          <p class="welcome-sub">选择本地音乐文件夹，即刻享受沉浸式播放体验</p>
-          <button class="btn-select" @click="fileInputRef.click()">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-            </svg>
-            选择音乐文件夹
-          </button>
+          <p class="welcome-sub">选择本地文件夹，或连接音乐服务器</p>
+
+          <!-- 两个入口按钮 -->
+          <div class="welcome-btns">
+            <button class="btn-select" @click="fileInputRef.click()">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+              </svg>
+              本地文件夹
+            </button>
+            <button class="btn-server" @click="showServerPanel = true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/>
+                <line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/>
+              </svg>
+              连接服务器
+            </button>
+          </div>
+
+          <!-- 服务器连接面板 -->
+          <div v-if="showServerPanel" class="server-panel">
+            <div class="sp-title">服务器地址</div>
+            <div class="sp-row">
+              <input
+                  v-model="serverUrl"
+                  class="sp-input"
+                  placeholder="http://localhost:3000"
+                  @keydown.enter="connectServer"
+              />
+              <button class="sp-btn" :disabled="serverLoading" @click="connectServer">
+                <span v-if="serverLoading" class="sp-loading"></span>
+                <span v-else>连接</span>
+              </button>
+            </div>
+            <p v-if="serverError" class="sp-error">{{ serverError }}</p>
+            <p class="sp-hint">启动服务器：<code>node server.js --root /your/music</code></p>
+          </div>
+
           <p v-if="errorMsg" class="error-msg">{{ errorMsg }}</p>
         </div>
       </div>
@@ -671,7 +885,7 @@ onUnmounted(() => {
       <!-- 文件浏览器 -->
       <div v-else class="file-browser">
         <nav class="breadcrumb">
-          <span class="crumb crumb-root" @click="() => { pathStack = []; navigateToPath([]) }">
+          <span class="crumb crumb-root" @click="goRoot">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
               <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
             </svg>
@@ -688,11 +902,18 @@ onUnmounted(() => {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>
             返回
           </button>
-          <button class="btn-toolbar" @click="fileInputRef.click()">
+          <!-- 本地模式显示更换文件夹；服务器模式显示刷新 -->
+          <button v-if="sourceMode === 'local'" class="btn-toolbar" @click="fileInputRef.click()">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
             </svg>
             <span class="btn-text">更换文件夹</span>
+          </button>
+          <button v-else class="btn-toolbar" @click="connectServer">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-.18-5.3"/>
+            </svg>
+            <span class="btn-text">刷新</span>
           </button>
           <span class="item-count">{{ filteredEntries.length }} 个项目</span>
         </div>
@@ -1559,7 +1780,65 @@ onUnmounted(() => {
   .m-controls .volume-slider { width: 64px; }
 }
 
-/* 超小屏 ≤ 375px */
+/* 欢迎页两按钮并排 */
+.welcome-btns { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; margin-top: 4px; }
+
+.btn-server {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 14px 28px; border-radius: 14px; border: 1.5px solid var(--t-border);
+  background: var(--t-bg-card); color: var(--t-accent2);
+  font-size: 1rem; font-weight: 600; font-family: inherit; cursor: pointer;
+  transition: all 0.25s;
+}
+.btn-server svg { width: 20px; height: 20px; }
+.btn-server:hover { border-color: var(--t-accent2); background: rgba(255,255,255,0.06); transform: translateY(-2px); }
+
+/* 服务器连接面板 */
+.server-panel {
+  margin-top: 20px; padding: 20px 22px; border-radius: 14px;
+  border: 1px solid var(--t-border); background: var(--t-bg-card);
+  width: min(400px, 90vw); text-align: left;
+}
+.sp-title { font-size: 0.75rem; letter-spacing: 3px; color: var(--t-label-color); margin-bottom: 10px; font-family: 'Orbitron', monospace; }
+.sp-row { display: flex; gap: 8px; }
+.sp-input {
+  flex: 1; padding: 9px 14px; border-radius: 8px; border: 1px solid var(--t-border);
+  background: rgba(255,255,255,0.05); color: var(--t-text); font-size: 0.88rem; font-family: inherit; outline: none;
+}
+.sp-input:focus { border-color: var(--t-accent1); }
+.sp-btn {
+  padding: 9px 18px; border-radius: 8px; border: none;
+  background: var(--t-play-bg); color: rgba(0,0,0,0.8); font-weight: 600; font-family: inherit;
+  cursor: pointer; font-size: 0.88rem; transition: opacity 0.2s; white-space: nowrap; min-width: 64px;
+  display: flex; align-items: center; justify-content: center;
+}
+.sp-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+.sp-loading {
+  width: 14px; height: 14px; border-radius: 50%;
+  border: 2px solid rgba(0,0,0,0.3); border-top-color: rgba(0,0,0,0.8);
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.sp-error { color: #ff6b6b; font-size: 0.8rem; margin: 8px 0 0; }
+.sp-hint { color: var(--t-text3); font-size: 0.75rem; margin: 10px 0 0; }
+.sp-hint code { color: var(--t-accent2); background: rgba(255,255,255,0.06); padding: 1px 5px; border-radius: 4px; font-size: 0.72rem; }
+
+/* 数据源徽标 */
+.source-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 8px 4px 10px; border-radius: 20px;
+  font-size: 0.72rem; font-weight: 600; letter-spacing: 1px;
+  border: 1px solid var(--t-border); background: var(--t-bg-card);
+  color: var(--t-text2);
+}
+.source-badge svg { width: 13px; height: 13px; flex-shrink: 0; }
+.source-badge.server { border-color: var(--t-accent2); color: var(--t-accent2); }
+.source-badge.local  { border-color: var(--t-accent1); color: var(--t-accent1); }
+.badge-close {
+  background: none; border: none; cursor: pointer; color: inherit; opacity: 0.6;
+  padding: 0 0 0 4px; font-size: 0.75rem; line-height: 1; transition: opacity 0.2s;
+}
+.badge-close:hover { opacity: 1; }
 @media (max-width: 375px) {
   .logo-text { display: none; }
   .search-wrap { width: calc(100vw - 165px); }

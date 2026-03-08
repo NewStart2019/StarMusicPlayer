@@ -2,10 +2,17 @@
  * StarMusicPlayer - 本地音乐服务器
  *
  * 提供两个核心接口：
- *   GET /api/files?dir=<目录路径>   — 递归扫描指定目录，返回文件树 JSON
- *   GET /api/download?path=<文件路径> — 下载指定文件
+ *   GET /api/files?dir=<目录路径>    — 递归扫描指定目录，返回文件树 JSON（每个文件含完整 url 字段）
+ *   GET /api/download?path=<文件路径> — 下载 / 流式播放指定文件，支持 Range 断点续传
  *
- * 启动：node server.js [--port 3000] [--root /your/music/dir]
+ * 启动：node server.js [--port 3000] [--host 0.0.0.0] [--root /your/music/dir]
+ *
+ *   --port  监听端口，默认 3000
+ *   --host  监听 IP，默认 0.0.0.0（所有网卡）；指定如 192.168.1.10 可限定网卡
+ *   --root  音乐根目录，默认当前工作目录
+ *
+ * 示例：
+ *   node server.js --port 8080 --host 192.168.1.10 --root /home/user/Music
  */
 
 import http from 'http'
@@ -23,6 +30,7 @@ const getArg = (flag) => {
 }
 
 const PORT      = parseInt(getArg('--port') || '3000', 10)
+const HOST      = getArg('--host') || '0.0.0.0'
 const ROOT_DIR  = path.resolve(getArg('--root') || process.cwd())
 
 /** 允许访问的音频 + 歌词扩展名（安全白名单） */
@@ -33,6 +41,7 @@ const ALLOWED_EXTS = new Set([
 
 console.log(`✦ StarMusicPlayer Server`)
 console.log(`  Root directory : ${ROOT_DIR}`)
+console.log(`  Host           : ${HOST}`)
 console.log(`  Port           : ${PORT}`)
 console.log(`  Allowed exts   : ${[...ALLOWED_EXTS].join(', ')}\n`)
 
@@ -45,8 +54,9 @@ console.log(`  Allowed exts   : ${[...ALLOWED_EXTS].join(', ')}\n`)
  */
 const safePath = (rawPath) => {
   if (!rawPath) return null
-  const resolved = path.resolve(ROOT_DIR, rawPath)
-  // 必须以 ROOT_DIR 开头（加 sep 防止 /root2 误匹配 /root）
+  // 将 URL 中的正斜杠统一转为系统路径分隔符（兼容 Windows）
+  const normalized = rawPath.split('/').join(path.sep)
+  const resolved   = path.resolve(ROOT_DIR, normalized)
   if (!resolved.startsWith(ROOT_DIR + path.sep) && resolved !== ROOT_DIR) return null
   return resolved
 }
@@ -55,10 +65,11 @@ const safePath = (rawPath) => {
  * 递归扫描目录，返回文件树
  * @param {string} dirPath  - 目录绝对路径
  * @param {string} baseRoot - 相对路径的基准根（用于生成 relativePath）
+ * @param {string} baseUrl  - 服务根地址，如 http://192.168.1.10:3000（用于生成完整 url）
  * @param {number} depth    - 当前递归深度（防无限递归，最深 20 层）
  * @returns {object} 节点对象
  */
-const scanDir = (dirPath, baseRoot, depth = 0) => {
+const scanDir = (dirPath, baseRoot, baseUrl, depth = 0) => {
   if (depth > 20) return null
 
   let stat
@@ -71,11 +82,15 @@ const scanDir = (dirPath, baseRoot, depth = 0) => {
   if (stat.isFile()) {
     // 只返回白名单内的文件
     if (!ALLOWED_EXTS.has(ext)) return null
+    // 将相对路径中的反斜杠（Windows）统一转为正斜杠，再编码为 URL 参数
+    const urlPath     = relativePath.split(path.sep).join('/')
+    const downloadUrl = `${baseUrl}/api/download?path=${encodeURIComponent(urlPath)}`
     return {
       type         : 'file',
       name,
       ext,
       relativePath,
+      url          : downloadUrl,
       size         : stat.size,
       sizeReadable : formatSize(stat.size),
       mtime        : stat.mtime.toISOString(),
@@ -89,11 +104,21 @@ const scanDir = (dirPath, baseRoot, depth = 0) => {
     try { children = fs.readdirSync(dirPath) } catch { children = [] }
 
     const childNodes = children
-      .map(child => scanDir(path.join(dirPath, child), baseRoot, depth + 1))
+      .map(child => scanDir(path.join(dirPath, child), baseRoot, baseUrl, depth + 1))
       .filter(Boolean)  // 过滤掉 null（不可访问 / 非白名单文件）
 
     // 目录本身没有任何允许的子节点时也过滤掉
     if (childNodes.length === 0) return null
+
+    // 为音频文件匹配同目录下同名 .lrc 文件，注入 lrc 字段
+    const lrcMap = new Map()
+    childNodes.forEach(n => { if (n.isLrc) lrcMap.set(n.name, n.url) })
+    childNodes.forEach(n => {
+      if (n.isAudio) {
+        const lrcName = n.name.replace(/\.[^.]+$/, '') + '.lrc'
+        n.lrc = lrcMap.get(lrcName) ?? null
+      }
+    })
 
     // 文件夹在前，文件在后，各自按名称排序
     childNodes.sort((a, b) => {
@@ -174,8 +199,14 @@ const handleFiles = (req, res, query) => {
   }
   if (!stat.isDirectory()) return sendError(res, 400, `指定路径不是目录`)
 
+  // 从请求头 Host 推导 baseUrl，用于生成文件的完整 url 字段
+  // 优先使用 X-Forwarded-Host（反向代理场景），回退到 Host 头，最后用配置值
+  const hostHeader = req.headers['x-forwarded-host'] || req.headers['host'] || `${HOST}:${PORT}`
+  const proto      = req.headers['x-forwarded-proto'] || 'http'
+  const baseUrl    = `${proto}://${hostHeader}`
+
   // 扫描
-  const tree = scanDir(targetDir, ROOT_DIR)
+  const tree = scanDir(targetDir, ROOT_DIR, baseUrl)
   if (!tree) return sendError(res, 500, '扫描目录失败或目录为空')
 
   if (flatMode) {
@@ -189,6 +220,7 @@ const handleFiles = (req, res, query) => {
     return sendJSON(res, 200, {
       success    : true,
       root       : ROOT_DIR,
+      baseUrl,
       dir        : path.relative(ROOT_DIR, targetDir) || '.',
       scannedAt  : new Date().toISOString(),
       totalFiles : files.length,
@@ -199,6 +231,7 @@ const handleFiles = (req, res, query) => {
   sendJSON(res, 200, {
     success   : true,
     root      : ROOT_DIR,
+    baseUrl,
     dir       : path.relative(ROOT_DIR, targetDir) || '.',
     scannedAt : new Date().toISOString(),
     tree,
@@ -272,11 +305,14 @@ const handleDownload = (req, res, query) => {
   // Content-Disposition: attachment 触发浏览器「另存为」对话框
   // filename* 使用 RFC 5987 编码，支持中文文件名
   const encodedName = encodeURIComponent(fileName).replace(/'/g, "%27")
+  // filename= 只能含 ASCII 可见字符，中文等非 ASCII 字符会导致 ERR_INVALID_CHAR
+  // 用 ASCII 安全的占位名 + filename*=UTF-8'' 编码名并存，兼容所有客户端
+  const asciiFallback = encodeURIComponent(fileName).replace(/%[0-9A-Fa-f]{2}/g, '_')
   res.writeHead(200, {
     'Content-Type'                : mimeType,
     'Content-Length'              : fileSize,
     'Accept-Ranges'               : 'bytes',
-    'Content-Disposition'         : `attachment; filename="${fileName}"; filename*=UTF-8''${encodedName}`,
+    'Content-Disposition'         : `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encodedName}`,
     'Access-Control-Allow-Origin' : '*',
     'Cache-Control'               : 'no-cache',
   })
@@ -323,7 +359,7 @@ const server = http.createServer((req, res) => {
 
   // 解析 URL
   let url
-  try { url = new URL(req.url, `http://localhost:${PORT}`) }
+  try { url = new URL(req.url, `http://${HOST}:${PORT}`) }
   catch { return sendError(res, 400, '无效的 URL') }
 
   const { pathname, searchParams } = url
@@ -366,11 +402,15 @@ const server = http.createServer((req, res) => {
   sendError(res, 404, `未知路由: ${pathname}`)
 })
 
-server.listen(PORT, () => {
-  console.log(`✦ Server running → http://localhost:${PORT}`)
-  console.log(`  文件列表: http://localhost:${PORT}/api/files`)
-  console.log(`  文件列表(扁平): http://localhost:${PORT}/api/files?flat=1`)
-  console.log(`  文件下载: http://localhost:${PORT}/api/download?path=<相对路径>\n`)
+server.listen(PORT, HOST, () => {
+  const displayHost = HOST === '0.0.0.0' ? 'localhost' : HOST
+  console.log(`✦ Server running → http://${displayHost}:${PORT}`)
+  if (HOST === '0.0.0.0') {
+    console.log(`  局域网访问   → http://<本机IP>:${PORT}`)
+  }
+  console.log(`  文件列表     : http://${displayHost}:${PORT}/api/files`)
+  console.log(`  文件列表(扁平): http://${displayHost}:${PORT}/api/files?flat=1`)
+  console.log(`  文件下载     : http://${displayHost}:${PORT}/api/download?path=<相对路径>\n`)
 })
 
 server.on('error', (err) => {
