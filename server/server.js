@@ -340,21 +340,101 @@ const getMimeType = (ext) => ({
   '.txt'  : 'text/plain; charset=utf-8',
 }[ext] || 'application/octet-stream')
 
+// ─── 收藏接口 ──────────────────────────────────────────────────────────────────
+
+/** 收藏数据存储路径（相对于 server.js 所在目录） */
+const FAVORITE_FILE = path.resolve(process.cwd(), 'data', 'favorite.json')
+
+/** 确保 data 目录存在 */
+const ensureDataDir = () => {
+  const dir = path.dirname(FAVORITE_FILE)
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+}
+
+/** 读取收藏列表，返回数组（失败返回空数组） */
+const readFavorites = () => {
+  try {
+    if (!fs.existsSync(FAVORITE_FILE)) return []
+    const raw = fs.readFileSync(FAVORITE_FILE, 'utf-8')
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed : []
+  } catch { return [] }
+}
+
+/** 写入收藏列表 */
+const writeFavorites = (list) => {
+  ensureDataDir()
+  fs.writeFileSync(FAVORITE_FILE, JSON.stringify(list, null, 2), 'utf-8')
+}
+
+/**
+ * POST /favorite/add
+ * Body: JSON 对象，格式与 /api/files 返回的文件节点相同
+ * 将歌曲插入收藏列表最前面（已收藏则先移除再插入，保持唯一）
+ */
+const handleFavoriteAdd = (req, res) => {
+  let body = ''
+  req.on('data', chunk => { body += chunk })
+  req.on('end', () => {
+    let song
+    try { song = JSON.parse(body) } catch {
+      return sendError(res, 400, '请求体不是合法 JSON')
+    }
+    if (!song || typeof song !== 'object' || !song.name) {
+      return sendError(res, 400, '缺少必要字段 name')
+    }
+    const list = readFavorites()
+    // 去重：按 url 或 name 去掉旧记录
+    const deduped = list.filter(f => f.url !== song.url && f.name !== song.name)
+    // 最新添加放最前面
+    deduped.unshift(song)
+    writeFavorites(deduped)
+    sendJSON(res, 200, { success: true, total: deduped.length })
+  })
+}
+
+/**
+ * POST /favorite/remove
+ * Body: { url } 或 { name }，按 url 或 name 匹配删除
+ */
+const handleFavoriteRemove = (req, res) => {
+  let body = ''
+  req.on('data', chunk => { body += chunk })
+  req.on('end', () => {
+    let payload
+    try { payload = JSON.parse(body) } catch {
+      return sendError(res, 400, '请求体不是合法 JSON')
+    }
+    const list = readFavorites()
+    const after = list.filter(f =>
+      payload.url  ? f.url  !== payload.url
+                   : f.name !== payload.name
+    )
+    writeFavorites(after)
+    sendJSON(res, 200, { success: true, total: after.length })
+  })
+}
+
+/**
+ * GET /favorite/data
+ * 返回收藏列表数组（最新在前）
+ */
+const handleFavoriteData = (req, res) => {
+  const list = readFavorites()
+  sendJSON(res, 200, { success: true, total: list.length, data: list })
+}
+
 // ─── HTTP 服务器 ──────────────────────────────────────────────────────────────
 
 const server = http.createServer((req, res) => {
-  // 只处理 GET / OPTIONS
+  // CORS 预检
   if (req.method === 'OPTIONS') {
     res.writeHead(204, {
       'Access-Control-Allow-Origin'  : '*',
-      'Access-Control-Allow-Methods' : 'GET, OPTIONS',
+      'Access-Control-Allow-Methods' : 'GET, POST, OPTIONS',
       'Access-Control-Allow-Headers' : 'Range, Content-Type',
     })
     return res.end()
-  }
-
-  if (req.method !== 'GET') {
-    return sendError(res, 405, '只支持 GET 请求')
   }
 
   // 解析 URL
@@ -366,51 +446,52 @@ const server = http.createServer((req, res) => {
 
   console.log(`[${new Date().toLocaleTimeString()}] ${req.method} ${pathname}  ${[...searchParams].map(([k,v])=>`${k}=${v}`).join('&')}`)
 
-  if (pathname === '/api/files')    return handleFiles(req, res, searchParams)
-  if (pathname === '/api/download') return handleDownload(req, res, searchParams)
+  // ── GET 路由 ────────────────────────────────────────────────────
+  if (req.method === 'GET') {
+    if (pathname === '/api/files')      return handleFiles(req, res, searchParams)
+    if (pathname === '/api/download')   return handleDownload(req, res, searchParams)
+    if (pathname === '/favorite/data')  return handleFavoriteData(req, res)
 
-  // 根路径返回接口说明
-  if (pathname === '/') {
-    return sendJSON(res, 200, {
-      name    : 'StarMusicPlayer API Server',
-      version : '1.0.0',
-      root    : ROOT_DIR,
-      routes  : [
-        {
-          method      : 'GET',
-          path        : '/api/files',
-          description : '递归扫描目录，返回文件树 JSON',
-          params      : [
-            { name: 'dir',  required: false, desc: '相对于 root 的子目录路径，默认为 root' },
-            { name: 'flat', required: false, desc: 'flat=1 返回扁平文件数组，便于搜索' },
-          ],
-          example     : '/api/files?dir=Jazz&flat=0',
-        },
-        {
-          method      : 'GET',
-          path        : '/api/download',
-          description : '下载或流式播放指定文件，支持 Range 断点续传',
-          params      : [
-            { name: 'path', required: true, desc: '相对于 root 的文件路径' },
-          ],
-          example     : '/api/download?path=Jazz/Miles Davis - So What.mp3',
-        },
-      ],
-    })
+    // 根路径返回接口说明
+    if (pathname === '/') {
+      return sendJSON(res, 200, {
+        name    : 'StarMusicPlayer API Server',
+        version : '1.1.0',
+        root    : ROOT_DIR,
+        routes  : [
+          { method:'GET',  path:'/api/files',       description:'递归扫描目录，返回文件树 JSON' },
+          { method:'GET',  path:'/api/download',    description:'下载或流式播放指定文件，支持 Range' },
+          { method:'GET',  path:'/favorite/data',   description:'返回收藏列表数组（最新在前）' },
+          { method:'POST', path:'/favorite/add',    description:'添加歌曲到收藏（自动去重，最新在前）' },
+          { method:'POST', path:'/favorite/remove', description:'从收藏中移除歌曲（按 url 或 name 匹配）' },
+        ],
+      })
+    }
+
+    return sendError(res, 404, `未知路由: ${pathname}`)
   }
 
-  sendError(res, 404, `未知路由: ${pathname}`)
+  // ── POST 路由 ───────────────────────────────────────────────────
+  if (req.method === 'POST') {
+    if (pathname === '/favorite/add')    return handleFavoriteAdd(req, res)
+    if (pathname === '/favorite/remove') return handleFavoriteRemove(req, res)
+    return sendError(res, 404, `未知路由: ${pathname}`)
+  }
+
+  return sendError(res, 405, `不支持的请求方法: ${req.method}`)
 })
 
 server.listen(PORT, HOST, () => {
   const displayHost = HOST === '0.0.0.0' ? 'localhost' : HOST
   console.log(`✦ Server running → http://${displayHost}:${PORT}`)
   if (HOST === '0.0.0.0') {
-    console.log(`  局域网访问   → http://<本机IP>:${PORT}`)
+    console.log(`  局域网访问      → http://<本机IP>:${PORT}`)
   }
-  console.log(`  文件列表     : http://${displayHost}:${PORT}/api/files`)
-  console.log(`  文件列表(扁平): http://${displayHost}:${PORT}/api/files?flat=1`)
-  console.log(`  文件下载     : http://${displayHost}:${PORT}/api/download?path=<相对路径>\n`)
+  console.log(`  文件列表        : http://${displayHost}:${PORT}/api/files`)
+  console.log(`  文件下载        : http://${displayHost}:${PORT}/api/download?path=<相对路径>`)
+  console.log(`  收藏列表        : http://${displayHost}:${PORT}/favorite/data`)
+  console.log(`  添加收藏(POST)  : http://${displayHost}:${PORT}/favorite/add`)
+  console.log(`  移除收藏(POST)  : http://${displayHost}:${PORT}/favorite/remove\n`)
 })
 
 server.on('error', (err) => {

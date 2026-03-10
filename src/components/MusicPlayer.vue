@@ -1,6 +1,6 @@
 <script setup>
-import {ref, computed, onUnmounted, nextTick} from 'vue'
-import {parseLRC, findCurrentLyricIndex} from '../utils/lrcParser.js'
+import {computed, nextTick, onUnmounted, ref} from 'vue'
+import {findCurrentLyricIndex, parseLRC} from '../utils/lrcParser.js'
 import FileBrowser from './FileBrowser.vue'
 import PlayerView from './PlayerView.vue'
 
@@ -319,6 +319,7 @@ const hasAudioInFolder = (folder) => {
 // =============================================
 // 服务器模式
 // =============================================
+const serverBase = ref('')   // 连接成功后存储 server base URL，供收藏接口使用
 const connectServer = async ({url}) => {
   const base = url.replace(/\/$/, '')
   fileBrowserRef.value?.setServerLoading(true)
@@ -328,6 +329,7 @@ const connectServer = async ({url}) => {
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const data = await res.json()
     if (!data.success) throw new Error(data.error || '服务器返回失败')
+    serverBase.value = base
     serverTree.value = convertServerTree(data.tree, [])
     allEntries.value = serverTree.value
     hasFolder.value = true
@@ -387,6 +389,7 @@ const hasAudioInServerFolder = (folder) =>
 const disconnectServer = () => {
   sourceMode.value = 'local';
   hasFolder.value = false
+  serverBase.value = '';
   serverTree.value = null;
   allEntries.value = null
   currentEntries.value = [];
@@ -445,10 +448,13 @@ const breadcrumbNav = (item) => {
 // =============================================
 // 播放控制
 // =============================================
-const playAudio = async (entry) => {
-  const audioList = currentEntries.value.filter(e => e.type === 'file' && e.isAudio)
+// visibleList：可选，传入当前搜索过滤后的列表，用于构建 playlist
+// 不传时退回到 currentEntries（保持旧行为）
+const playAudio = async (entry, visibleList) => {
+  const source = visibleList ?? currentEntries.value
+  const audioList = source.filter(e => e.type === 'file' && e.isAudio)
   playlist.value = audioList
-  const idx = audioList.findIndex(e => e.name === entry.name)
+  const idx = audioList.findIndex(e => e.name === entry.name && e.url === entry.url)
   currentIndex.value = idx >= 0 ? idx : 0
   showPlayer.value = true
   await loadAndPlay(currentIndex.value)
@@ -523,10 +529,87 @@ const prevSong = () => {
 const nextSong = () => {
   if (playlist.value.length) loadAndPlay((currentIndex.value + 1) % playlist.value.length)
 }
-const toggleFavorite = () => {
+const toggleFavorite = async () => {
   if (!currentSong.value) return
-  const n = currentSong.value.name
-  favorites.value.has(n) ? favorites.value.delete(n) : favorites.value.add(n)
+  const song = currentSong.value
+  const n = song.name
+  const wasFav = favorites.value.has(n)
+
+  // 本地状态立即更新
+  if (wasFav) favorites.value.delete(n)
+  else favorites.value.add(n)
+
+  // 服务器模式：调接口持久化
+  if (sourceMode.value === 'server' && serverBase.value) {
+    try {
+      if (!wasFav) {
+        // 添加收藏
+        await fetch(`${serverBase.value}/favorite/add`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(song),
+        })
+      } else {
+        // 取消收藏
+        await fetch(`${serverBase.value}/favorite/remove`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({url: song.url, name: song.name}),
+        })
+      }
+    } catch (e) {
+      console.error('收藏接口错误:', e)
+    }
+  }
+}
+
+// ── 我的收藏 ──────────────────────────────
+const showFavorites = ref(false)
+const favoritesList = ref([])
+const favLoading = ref(false)
+const favError = ref('')
+
+const loadFavorites = async () => {
+  if (!serverBase.value) {
+    favError.value = '请先连接服务器';
+    return
+  }
+  favLoading.value = true;
+  favError.value = ''
+  try {
+    const res = await fetch(`${serverBase.value}/favorite/data`)
+    const data = await res.json()
+    if (data.success) {
+      favoritesList.value = data.data
+      // 同步本地收藏标记
+      data.data.forEach(s => favorites.value.add(s.name))
+    } else {
+      favError.value = data.error || '获取收藏失败'
+    }
+  } catch (e) {
+    favError.value = `请求失败: ${e.message}`
+  } finally {
+    favLoading.value = false
+  }
+}
+
+const toggleFavPanel = () => {
+  if (!showFavorites.value) {
+    showFavorites.value = true
+    loadFavorites()
+  } else {
+    showFavorites.value = false
+  }
+}
+
+const playFromFavorites = async (song) => {
+  // 将收藏列表的音频项作为 playlist，并播放选中的
+  const audioList = favoritesList.value.filter(e => e.isAudio !== false)
+  playlist.value = audioList
+  const idx = audioList.findIndex(e => e.url === song.url || e.name === song.name)
+  currentIndex.value = idx >= 0 ? idx : 0
+  showPlayer.value = true
+  await loadAndPlay(currentIndex.value)
 }
 const closePlayer = () => {
   showPlayer.value = false
@@ -695,7 +778,8 @@ onUnmounted(() => {
         :error-msg="errorMsg"
         :themes="THEMES"
         :current-theme-id="currentThemeId"
-        @play-audio="playAudio"
+        :server-mode="sourceMode === 'server'"
+        @play-audio="({ entry, visibleList }) => playAudio(entry, visibleList)"
         @enter-folder="enterFolder"
         @go-back="goBack"
         @go-root="goRoot"
@@ -705,7 +789,57 @@ onUnmounted(() => {
         @disconnect="disconnectServer"
         @refresh-server="refreshServer"
         @apply-theme="applyTheme"
+        @show-favorites="toggleFavPanel"
     />
+
+    <!-- 我的收藏面板 -->
+    <Transition name="fav-slide">
+      <div v-if="showFavorites" class="fav-panel">
+        <div class="fav-header">
+          <span class="fav-title">我的收藏</span>
+          <span class="fav-count" v-if="!favLoading">{{ favoritesList.length }} 首</span>
+          <button class="fav-close" @click="showFavorites = false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+
+        <div v-if="favLoading" class="fav-loading">
+          <span class="fav-spinner"></span>
+          <span>加载中...</span>
+        </div>
+        <div v-else-if="favError" class="fav-error">{{ favError }}</div>
+        <div v-else-if="favoritesList.length === 0" class="fav-empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+            <path
+                d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+          </svg>
+          <p>暂无收藏</p>
+          <span>在播放页面点击心形图标收藏歌曲</span>
+        </div>
+        <div v-else class="fav-list">
+          <div v-for="(song, i) in favoritesList" :key="song.url || song.name"
+               class="fav-item" @click="playFromFavorites(song)">
+            <div class="fav-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M9 18V5l12-2v13"/>
+                <circle cx="6" cy="18" r="3"/>
+                <circle cx="18" cy="16" r="3"/>
+              </svg>
+            </div>
+            <div class="fav-info">
+              <span class="fav-name">{{ song.name.replace(/\.[^.]+$/, '') }}</span>
+              <span class="fav-ext">{{ (song.name.split('.').pop() || '').toUpperCase() }}</span>
+            </div>
+            <svg class="fav-play-icon" viewBox="0 0 24 24" fill="currentColor">
+              <polygon points="5,3 19,12 5,21"/>
+            </svg>
+          </div>
+        </div>
+      </div>
+    </Transition>
 
     <!-- 播放页面 -->
     <Transition name="player-slide">
@@ -853,6 +987,223 @@ onUnmounted(() => {
   to {
     opacity: 0;
     transform: scale(0.95)
+  }
+}
+
+/* 我的收藏面板 */
+.fav-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(360px, 100vw);
+  z-index: 50;
+  background: color-mix(in srgb, var(--t-bg) 94%, white);
+  border-left: 1px solid var(--t-border);
+  backdrop-filter: blur(20px);
+  display: flex;
+  flex-direction: column;
+  box-shadow: -20px 0 60px rgba(0, 0, 0, 0.4);
+}
+
+.fav-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid var(--t-border);
+  flex-shrink: 0;
+}
+
+.fav-title {
+  font-family: 'Orbitron', monospace;
+  font-size: 0.75rem;
+  letter-spacing: 3px;
+  color: var(--t-label-color);
+  flex: 1;
+}
+
+.fav-count {
+  font-size: 0.78rem;
+  color: var(--t-text3);
+}
+
+.fav-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--t-text3);
+  padding: 4px;
+  border-radius: 6px;
+  display: flex;
+  transition: all 0.2s;
+}
+
+.fav-close svg {
+  width: 16px;
+  height: 16px;
+}
+
+.fav-close:hover {
+  color: var(--t-text);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.fav-loading {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  color: var(--t-text2);
+  font-size: 0.88rem;
+}
+
+.fav-spinner {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid var(--t-border);
+  border-top-color: var(--t-accent1);
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg)
+  }
+}
+
+.fav-error {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ff6b6b;
+  font-size: 0.85rem;
+  padding: 20px;
+  text-align: center;
+}
+
+.fav-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  color: var(--t-text3);
+  padding: 20px;
+  text-align: center;
+}
+
+.fav-empty svg {
+  width: 52px;
+  height: 52px;
+  opacity: 0.2;
+}
+
+.fav-empty p {
+  font-size: 1rem;
+  color: var(--t-text2);
+}
+
+.fav-empty span {
+  font-size: 0.78rem;
+  opacity: 0.6;
+}
+
+.fav-list {
+  flex: 1;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+}
+
+.fav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 18px;
+  cursor: pointer;
+  transition: background 0.18s;
+}
+
+.fav-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.fav-item:hover .fav-play-icon {
+  opacity: 1;
+}
+
+.fav-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: var(--t-audio-bg);
+  color: var(--t-audio-clr);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.fav-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.fav-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.fav-name {
+  font-size: 0.85rem;
+  color: var(--t-text2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fav-ext {
+  font-size: 0.65rem;
+  color: var(--t-audio-clr);
+  font-family: 'Orbitron', monospace;
+  opacity: 0.8;
+}
+
+.fav-play-icon {
+  width: 14px;
+  height: 14px;
+  color: var(--t-accent1);
+  opacity: 0;
+  transition: opacity 0.2s;
+  flex-shrink: 0;
+}
+
+/* 收藏面板过渡 */
+.fav-slide-enter-active {
+  animation: favIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.fav-slide-leave-active {
+  animation: favIn 0.22s ease reverse;
+}
+
+@keyframes favIn {
+  from {
+    opacity: 0;
+    transform: translateX(40px)
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0)
   }
 }
 </style>

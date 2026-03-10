@@ -1,5 +1,5 @@
 <script setup>
-import {ref, computed, watch} from 'vue'
+import {computed, ref, watch} from 'vue'
 
 const props = defineProps({
   hasFolder: {type: Boolean, required: true},
@@ -11,11 +11,13 @@ const props = defineProps({
   errorMsg: {type: String, default: ''},
   themes: {type: Array, required: true},
   currentThemeId: {type: String, required: true},
+  serverMode: {type: Boolean, default: false},
 })
 
 const emit = defineEmits([
   'play-audio', 'enter-folder', 'go-back', 'go-root', 'breadcrumb-nav',
   'folder-select', 'connect-server', 'disconnect', 'refresh-server', 'apply-theme',
+  'show-favorites',
 ])
 
 /* ── 本地 UI 状态 ─────────────────────────── */
@@ -226,12 +228,20 @@ const handleDisconnect = () => {
           <span class="btn-text">刷新</span>
         </button>
         <span class="item-count">{{ filteredEntries.length }} 个项目</span>
+        <!-- 我的收藏按钮（仅服务器模式显示） -->
+        <button v-if="serverMode" class="btn-toolbar btn-fav-entry" @click="emit('show-favorites')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path
+                d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+          </svg>
+          <span class="btn-text">我的收藏</span>
+        </button>
       </div>
 
       <div class="file-grid" v-if="filteredEntries.length > 0">
         <div v-for="entry in filteredEntries" :key="entry.name"
              class="file-card" :class="entry.type === 'folder' ? 'folder-card' : 'audio-card'"
-             @click="entry.type === 'folder' ? emit('enter-folder', entry) : emit('play-audio', entry)">
+             @click="entry.type === 'folder' ? emit('enter-folder', entry) : emit('play-audio', { entry, visibleList: filteredEntries })">
           <div v-if="entry.type === 'folder'" class="card-icon folder-icon">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
@@ -880,6 +890,17 @@ const handleDisconnect = () => {
   border-color: var(--t-accent1);
   color: var(--t-accent1);
   background: color-mix(in srgb, var(--t-accent1) 8%, transparent);
+}
+
+.btn-fav-entry {
+  border-color: color-mix(in srgb, var(--t-accent4) 40%, transparent);
+  color: var(--t-accent4);
+}
+
+.btn-fav-entry:hover {
+  border-color: var(--t-accent4);
+  color: var(--t-accent4);
+  background: color-mix(in srgb, var(--t-accent4) 8%, transparent);
 }
 
 .item-count {
