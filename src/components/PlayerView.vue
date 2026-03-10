@@ -1,5 +1,5 @@
 <script setup>
-import {ref, watch} from 'vue'
+import {computed, onUnmounted, ref, watch} from 'vue'
 
 const props = defineProps({
   displayTitle: {type: String, required: true},
@@ -15,13 +15,17 @@ const props = defineProps({
   isFavorite: {type: Boolean, required: true},
   playlist: {type: Array, required: true},
   currentIndex: {type: Number, required: true},
+  playMode: {type: String, default: 'order'},
+  sleepMinutes: {type: Number, default: 0},
+  sleepEndTime: {type: Number, default: 0},
 })
 
 const emit = defineEmits([
   'close', 'toggle-play', 'prev', 'next',
   'seek', 'drag-start', 'volume-change',
   'toggle-fav', 'load-index', 'lyric-seek',
-  'remove-from-playlist',
+  'remove-from-playlist', 'cycle-play-mode',
+  'set-sleep-timer', 'cancel-sleep-timer',
 ])
 
 const mobileTab = ref('player')
@@ -31,17 +35,43 @@ const lyricsContainerRef = ref(null)
 const mobileLyricsRef = ref(null)
 const showPlaylist = ref(false)
 const playlistPanelRef = ref(null)
+const showSleepPanel = ref(false)
+const sleepPanelRef = ref(null)
+
+const sleepCountdown = ref('')
+let countdownTimer = null
+const updateCountdown = () => {
+  if (!props.sleepEndTime) {
+    sleepCountdown.value = '';
+    return
+  }
+  const diff = Math.max(0, props.sleepEndTime - Date.now())
+  const m = Math.floor(diff / 60000)
+  const s = Math.floor((diff % 60000) / 1000)
+  sleepCountdown.value = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+}
+watch(() => props.sleepEndTime, (v) => {
+  if (countdownTimer) clearInterval(countdownTimer)
+  if (v) {
+    updateCountdown();
+    countdownTimer = setInterval(updateCountdown, 1000)
+  } else {
+    sleepCountdown.value = ''
+  }
+}, {immediate: true})
+onUnmounted(() => {
+  if (countdownTimer) clearInterval(countdownTimer)
+})
 
 defineExpose({progressBarRef, mobileProgressRef, lyricsContainerRef, mobileLyricsRef})
 
-// 点击面板外部关闭播放列表
 const onDocClick = (e) => {
-  if (playlistPanelRef.value && !playlistPanelRef.value.contains(e.target))
-    showPlaylist.value = false
+  if (playlistPanelRef.value && !playlistPanelRef.value.contains(e.target)) showPlaylist.value = false
+  if (sleepPanelRef.value && !sleepPanelRef.value.contains(e.target)) showSleepPanel.value = false
 }
-watch(showPlaylist, (v) => {
-  v ? document.addEventListener('click', onDocClick, true)
-      : document.removeEventListener('click', onDocClick, true)
+watch([showPlaylist, showSleepPanel], ([pl, sl]) => {
+  if (pl || sl) document.addEventListener('click', onDocClick, true)
+  else document.removeEventListener('click', onDocClick, true)
 })
 
 const fmt = (sec) => {
@@ -51,16 +81,17 @@ const fmt = (sec) => {
 }
 
 const dotStart = (i) => Math.max(0, props.currentIndex - 3) + i
+const sleepOptions = [15, 30, 45, 60, 90]
+const playModeLabel = computed(() => ({order: '顺序播放', shuffle: '随机播放', repeat: '单曲循环'})[props.playMode])
 </script>
 
 <template>
   <div class="player-modal">
     <div class="player-inner">
 
-      <button class="btn-close" @click="emit('close')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <line x1="18" y1="6" x2="6" y2="18"/>
-          <line x1="6" y1="6" x2="18" y2="18"/>
+      <button class="btn-close" @click="emit('close')" title="收起">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <polyline points="6 9 12 15 18 9"/>
         </svg>
       </button>
 
@@ -104,9 +135,9 @@ const dotStart = (i) => Math.max(0, props.currentIndex - 3) + i
           </div>
         </div>
 
-        <!-- 主控制行：收藏 上一曲 播放/暂停 下一曲 播放列表 -->
+        <!-- 主控制行 -->
         <div class="controls">
-          <button class="ctrl-btn ctrl-fav" :class="{ active: isFavorite }" @click="emit('toggle-fav')">
+          <button class="ctrl-btn ctrl-fav" :class="{ active: isFavorite }" @click="emit('toggle-fav')" title="收藏">
             <svg viewBox="0 0 24 24" :fill="isFavorite ? 'currentColor' : 'none'" stroke="currentColor"
                  stroke-width="2">
               <path
@@ -134,11 +165,9 @@ const dotStart = (i) => Math.max(0, props.currentIndex - 3) + i
               <line x1="19" y1="4" x2="19" y2="20" stroke="currentColor" stroke-width="2" fill="none"/>
             </svg>
           </button>
-
-          <!-- 播放列表按钮 + 弹出面板 -->
           <div class="pl-wrap" ref="playlistPanelRef">
             <button class="ctrl-btn ctrl-list" :class="{ active: showPlaylist }"
-                    @click.stop="showPlaylist = !showPlaylist" title="播放列表">
+                    @click.stop="showPlaylist = !showPlaylist; showSleepPanel = false" title="播放列表">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <line x1="8" y1="6" x2="21" y2="6"/>
                 <line x1="8" y1="12" x2="21" y2="12"/>
@@ -161,7 +190,7 @@ const dotStart = (i) => Math.max(0, props.currentIndex - 3) + i
                        @click="emit('load-index', i)">
                     <span class="pl-num">{{ i + 1 }}</span>
                     <span class="pl-name">{{ song.name.replace(/\.[^.]+$/, '') }}</span>
-                    <button class="pl-del" @click.stop="emit('remove-from-playlist', i)" title="移除">
+                    <button class="pl-del" @click.stop="emit('remove-from-playlist', i)">
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                         <line x1="18" y1="6" x2="6" y2="18"/>
                         <line x1="6" y1="6" x2="18" y2="18"/>
@@ -174,23 +203,86 @@ const dotStart = (i) => Math.max(0, props.currentIndex - 3) + i
           </div>
         </div>
 
-        <!-- 音量行（独立一行） -->
-        <div class="volume-row">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="vol-icon">
-            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
-            <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
-            <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
-          </svg>
-          <input type="range" min="0" max="1" step="0.01" :value="volume" class="volume-slider"
-                 @input="emit('volume-change', $event)"/>
+        <!-- 第二行：音量 / 播放模式 / 睡眠定时 -->
+        <div class="secondary-row">
+          <div class="volume-row">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="vol-icon">
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+              <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
+              <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+            </svg>
+            <input type="range" min="0" max="1" step="0.01" :value="volume" class="volume-slider"
+                   @input="emit('volume-change', $event)"/>
+          </div>
+
+          <button class="ctrl-btn ctrl-mode" @click="emit('cycle-play-mode')" :title="playModeLabel">
+            <svg v-if="playMode === 'order'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="17 1 21 5 17 9"/>
+              <path d="M3 11V9a4 4 0 0 1 4-4h14"/>
+              <polyline points="7 23 3 19 7 15"/>
+              <path d="M21 13v2a4 4 0 0 1-4 4H3"/>
+            </svg>
+            <svg v-else-if="playMode === 'shuffle'" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2">
+              <polyline points="16 3 21 3 21 8"/>
+              <line x1="4" y1="20" x2="21" y2="3"/>
+              <polyline points="21 16 21 21 16 21"/>
+              <line x1="15" y1="15" x2="21" y2="21"/>
+              <line x1="4" y1="4" x2="9" y2="9"/>
+            </svg>
+            <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="17 1 21 5 17 9"/>
+              <path d="M3 11V9a4 4 0 0 1 4-4h14"/>
+              <polyline points="7 23 3 19 7 15"/>
+              <path d="M21 13v2a4 4 0 0 1-4 4H3"/>
+              <text x="10" y="14.5" font-size="5.5" fill="currentColor" stroke="none" font-weight="bold"
+                    font-family="sans-serif">1
+              </text>
+            </svg>
+          </button>
+
+          <div class="sleep-wrap" ref="sleepPanelRef">
+            <button class="ctrl-btn ctrl-sleep" :class="{ active: sleepMinutes > 0 }"
+                    @click.stop="showSleepPanel = !showSleepPanel; showPlaylist = false"
+                    :title="sleepMinutes > 0 ? `定时停止：${sleepCountdown}` : '定时停止'">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <polyline points="12 6 12 12 16 14"/>
+              </svg>
+              <span v-if="sleepMinutes > 0" class="sleep-badge">{{ sleepCountdown }}</span>
+            </button>
+            <Transition name="pl-anim">
+              <div v-if="showSleepPanel" class="sleep-panel">
+                <div class="sleep-header">
+                  <span class="sleep-title">定时停止播放</span>
+                  <button v-if="sleepMinutes > 0" class="sleep-cancel"
+                          @click="emit('cancel-sleep-timer'); showSleepPanel = false">取消
+                  </button>
+                </div>
+                <div v-if="sleepMinutes > 0" class="sleep-active">
+                  <div class="sleep-countdown">{{ sleepCountdown }}</div>
+                  <div class="sleep-hint">将在此时间后停止播放</div>
+                </div>
+                <div class="sleep-options">
+                  <button v-for="min in sleepOptions" :key="min"
+                          class="sleep-opt" :class="{ active: sleepMinutes === min }"
+                          @click="emit('set-sleep-timer', min); showSleepPanel = false">
+                    {{ min }} 分钟
+                  </button>
+                  <button class="sleep-opt sleep-opt-end" :class="{ active: sleepMinutes === -1 }"
+                          @click="emit('set-sleep-timer', -1); showSleepPanel = false">
+                    本曲结束后
+                  </button>
+                </div>
+              </div>
+            </Transition>
+          </div>
         </div>
 
         <div class="playlist-dots">
-          <span
-              v-for="(_, i) in playlist.slice(Math.max(0,currentIndex-3), Math.min(playlist.length,currentIndex+4))"
-              :key="i" class="dot" :class="{ active: dotStart(i) === currentIndex }"
-              @click="emit('load-index', dotStart(i))"
-          ></span>
+          <span v-for="(_, i) in playlist.slice(Math.max(0,currentIndex-3), Math.min(playlist.length,currentIndex+4))"
+                :key="i" class="dot" :class="{ active: dotStart(i) === currentIndex }"
+                @click="emit('load-index', dotStart(i))"></span>
         </div>
       </div>
 
@@ -223,13 +315,12 @@ const dotStart = (i) => Math.max(0, props.currentIndex - 3) + i
         </div>
       </div>
 
-      <!-- ===== 手机端 Tab 布局 ===== -->
+      <!-- ===== 手机 ===== -->
       <div class="mobile-player">
         <div class="mobile-tabs">
           <button class="m-tab" :class="{ active: mobileTab === 'player' }" @click="mobileTab = 'player'">播放</button>
           <button class="m-tab" :class="{ active: mobileTab === 'lyrics' }" @click="mobileTab = 'lyrics'">歌词</button>
         </div>
-
         <div v-show="mobileTab === 'player'" class="m-content">
           <div class="song-info">
             <h1 class="song-title m-title">{{ displayTitle }}</h1>
@@ -253,20 +344,15 @@ const dotStart = (i) => Math.max(0, props.currentIndex - 3) + i
             <div class="album-glow" :class="{ active: isPlaying }"></div>
           </div>
           <div class="progress-section">
-            <div class="time-display">
-              <span>{{ fmt(currentTime) }}</span><span>{{ fmt(duration) }}</span>
-            </div>
+            <div class="time-display"><span>{{ fmt(currentTime) }}</span><span>{{ fmt(duration) }}</span></div>
             <div class="progress-bar" ref="mobileProgressRef"
-                 @click="emit('seek', $event)"
-                 @mousedown="emit('drag-start', $event)"
+                 @click="emit('seek', $event)" @mousedown="emit('drag-start', $event)"
                  @touchstart.prevent="emit('drag-start', $event)">
               <div class="progress-bg"></div>
               <div class="progress-fill" :style="{ width: progressPercent + '%' }"></div>
               <div class="progress-thumb" :style="{ left: progressPercent + '%' }"></div>
             </div>
           </div>
-
-          <!-- 手机主控制行 -->
           <div class="controls m-controls">
             <button class="ctrl-btn ctrl-fav" :class="{ active: isFavorite }" @click="emit('toggle-fav')">
               <svg viewBox="0 0 24 24" :fill="isFavorite ? 'currentColor' : 'none'" stroke="currentColor"
@@ -296,7 +382,6 @@ const dotStart = (i) => Math.max(0, props.currentIndex - 3) + i
                 <line x1="19" y1="4" x2="19" y2="20" stroke="currentColor" stroke-width="2" fill="none"/>
               </svg>
             </button>
-            <!-- 手机播放列表按钮 -->
             <button class="ctrl-btn ctrl-list" :class="{ active: showPlaylist }"
                     @click.stop="showPlaylist = !showPlaylist">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -309,28 +394,56 @@ const dotStart = (i) => Math.max(0, props.currentIndex - 3) + i
               </svg>
             </button>
           </div>
-
-          <!-- 手机音量行 -->
-          <div class="volume-row m-volume-row">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="vol-icon">
-              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
-              <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
-            </svg>
-            <input type="range" min="0" max="1" step="0.01" :value="volume" class="volume-slider"
-                   @input="emit('volume-change', $event)"/>
+          <div class="m-secondary-row">
+            <div class="volume-row m-volume-row">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="vol-icon">
+                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+                <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+              </svg>
+              <input type="range" min="0" max="1" step="0.01" :value="volume" class="volume-slider"
+                     @input="emit('volume-change', $event)"/>
+            </div>
+            <button class="ctrl-btn ctrl-mode" @click="emit('cycle-play-mode')" :title="playModeLabel">
+              <svg v-if="playMode === 'order'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="17 1 21 5 17 9"/>
+                <path d="M3 11V9a4 4 0 0 1 4-4h14"/>
+                <polyline points="7 23 3 19 7 15"/>
+                <path d="M21 13v2a4 4 0 0 1-4 4H3"/>
+              </svg>
+              <svg v-else-if="playMode === 'shuffle'" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="2">
+                <polyline points="16 3 21 3 21 8"/>
+                <line x1="4" y1="20" x2="21" y2="3"/>
+                <polyline points="21 16 21 21 16 21"/>
+                <line x1="15" y1="15" x2="21" y2="21"/>
+                <line x1="4" y1="4" x2="9" y2="9"/>
+              </svg>
+              <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="17 1 21 5 17 9"/>
+                <path d="M3 11V9a4 4 0 0 1 4-4h14"/>
+                <polyline points="7 23 3 19 7 15"/>
+                <path d="M21 13v2a4 4 0 0 1-4 4H3"/>
+                <text x="10" y="14.5" font-size="5.5" fill="currentColor" stroke="none" font-weight="bold"
+                      font-family="sans-serif">1
+                </text>
+              </svg>
+            </button>
+            <button class="ctrl-btn ctrl-sleep" :class="{ active: sleepMinutes > 0 }"
+                    @click.stop="showSleepPanel = !showSleepPanel">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <polyline points="12 6 12 12 16 14"/>
+              </svg>
+            </button>
           </div>
         </div>
-
-        <!-- 手机歌词 tab -->
         <div v-show="mobileTab === 'lyrics'" class="m-content m-lyrics-content">
-          <div class="lyrics-header">
-            <span class="lyrics-label">LYRICS</span>
+          <div class="lyrics-header"><span class="lyrics-label">LYRICS</span>
             <div class="lyrics-deco"></div>
           </div>
           <div v-if="lyrics.length > 0" class="lyrics-container m-lyrics-scroll" ref="mobileLyricsRef">
             <div class="lyrics-spacer"></div>
-            <div v-for="(line, i) in lyrics" :key="i"
-                 class="lyric-line"
+            <div v-for="(line, i) in lyrics" :key="i" class="lyric-line"
                  :class="{ active: i === currentLyricIndex, prev: i < currentLyricIndex, next: i > currentLyricIndex }"
             >{{ line.text || '♪' }}
             </div>
@@ -347,14 +460,11 @@ const dotStart = (i) => Math.max(0, props.currentIndex - 3) + i
             <p>暂无歌词</p>
           </div>
         </div>
-
-        <!-- 手机播放列表弹层（全屏遮罩） -->
         <Transition name="m-pl-anim">
           <div v-if="showPlaylist" class="m-pl-overlay" @click.self="showPlaylist = false">
             <div class="m-pl-sheet">
               <div class="pl-header">
-                <span class="pl-label">播放列表</span>
-                <span class="pl-count">{{ playlist.length }} 首</span>
+                <span class="pl-label">播放列表</span><span class="pl-count">{{ playlist.length }} 首</span>
                 <button class="pl-close-btn" @click="showPlaylist = false">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <line x1="18" y1="6" x2="6" y2="18"/>
@@ -364,18 +474,48 @@ const dotStart = (i) => Math.max(0, props.currentIndex - 3) + i
               </div>
               <div class="pl-scroll">
                 <div v-if="playlist.length === 0" class="pl-empty">播放列表为空</div>
-                <div v-for="(song, i) in playlist" :key="song.name + i"
-                     class="pl-item" :class="{ 'pl-cur': i === currentIndex }"
+                <div v-for="(song, i) in playlist" :key="song.name + i" class="pl-item"
+                     :class="{ 'pl-cur': i === currentIndex }"
                      @click="emit('load-index', i); showPlaylist = false">
                   <span class="pl-num">{{ i + 1 }}</span>
                   <span class="pl-name">{{ song.name.replace(/\.[^.]+$/, '') }}</span>
-                  <button class="pl-del" @click.stop="emit('remove-from-playlist', i)" title="移除">
+                  <button class="pl-del" @click.stop="emit('remove-from-playlist', i)">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                       <line x1="18" y1="6" x2="6" y2="18"/>
                       <line x1="6" y1="6" x2="18" y2="18"/>
                     </svg>
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>
+        </Transition>
+        <Transition name="m-pl-anim">
+          <div v-if="showSleepPanel" class="m-pl-overlay" @click.self="showSleepPanel = false">
+            <div class="m-sleep-sheet">
+              <div class="pl-header">
+                <span class="pl-label">定时停止播放</span>
+                <button class="pl-close-btn" @click="showSleepPanel = false">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                </button>
+              </div>
+              <div v-if="sleepMinutes > 0" class="m-sleep-active">
+                <div class="sleep-countdown">{{ sleepCountdown }}</div>
+                <div class="sleep-hint">将在此时间后停止播放</div>
+                <button class="sleep-cancel-btn" @click="emit('cancel-sleep-timer'); showSleepPanel = false">取消定时
+                </button>
+              </div>
+              <div class="m-sleep-options">
+                <button v-for="min in sleepOptions" :key="min" class="sleep-opt"
+                        :class="{ active: sleepMinutes === min }"
+                        @click="emit('set-sleep-timer', min); showSleepPanel = false">{{ min }} 分钟
+                </button>
+                <button class="sleep-opt sleep-opt-end" :class="{ active: sleepMinutes === -1 }"
+                        @click="emit('set-sleep-timer', -1); showSleepPanel = false">本曲结束后
+                </button>
               </div>
             </div>
           </div>
@@ -393,8 +533,8 @@ const dotStart = (i) => Math.max(0, props.currentIndex - 3) + i
   z-index: 100;
   display: flex;
   align-items: stretch;
-  background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(18px);
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(20px);
 }
 
 .player-inner {
@@ -402,19 +542,18 @@ const dotStart = (i) => Math.max(0, props.currentIndex - 3) + i
   width: 100%;
   height: 100%;
   display: flex;
-  background: radial-gradient(ellipse at 20% 20%, color-mix(in srgb, var(--t-accent2) 8%, transparent) 0%, transparent 60%),
-  radial-gradient(ellipse at 80% 80%, color-mix(in srgb, var(--t-accent4) 8%, transparent) 0%, transparent 60%),
-  var(--t-bg-glass);
+  background: radial-gradient(ellipse at 20% 20%, color-mix(in srgb, var(--t-accent2) 8%, transparent) 0%, transparent 60%), radial-gradient(ellipse at 80% 80%, color-mix(in srgb, var(--t-accent4) 8%, transparent) 0%, transparent 60%), var(--t-bg-glass);
   overflow: hidden;
 }
 
 .btn-close {
   position: absolute;
-  top: 20px;
-  right: 22px;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
   z-index: 10;
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   background: var(--t-overlay);
   border: 1px solid var(--t-border);
@@ -427,26 +566,25 @@ const dotStart = (i) => Math.max(0, props.currentIndex - 3) + i
 }
 
 .btn-close svg {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
 }
 
 .btn-close:hover {
-  background: rgba(255, 60, 60, 0.18);
-  border-color: rgba(255, 60, 60, 0.5);
-  color: #ff5050;
-  transform: rotate(90deg);
+  background: var(--t-border);
+  color: var(--t-text);
+  transform: translateX(-50%) translateY(2px);
 }
 
-/* ── 左侧 ── */
+/* LEFT */
 .player-left {
   width: 50%;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 16px;
-  padding: 36px 44px;
+  gap: 14px;
+  padding: 52px 44px 30px;
   border-right: 1px solid var(--t-border);
   overflow-y: auto;
 }
@@ -477,7 +615,7 @@ const dotStart = (i) => Math.max(0, props.currentIndex - 3) + i
   letter-spacing: 2px;
 }
 
-/* ── 专辑封面 ── */
+/* ALBUM */
 .album-wrap {
   position: relative;
   width: min(200px, 22vw);
@@ -494,7 +632,6 @@ const dotStart = (i) => Math.max(0, props.currentIndex - 3) + i
 
 .ring-outer {
   inset: -16px;
-  animation-delay: 0s;
 }
 
 .ring-mid {
@@ -520,7 +657,7 @@ const dotStart = (i) => Math.max(0, props.currentIndex - 3) + i
   background: var(--t-disc-bg);
   border: 2px solid var(--t-disc-border);
   overflow: hidden;
-  box-shadow: 0 0 40px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 0 40px rgba(0, 0, 0, 0.5);
 }
 
 .disc-grooves {
@@ -621,7 +758,7 @@ const dotStart = (i) => Math.max(0, props.currentIndex - 3) + i
   }
 }
 
-/* ── 进度条 ── */
+/* PROGRESS */
 .progress-section {
   width: 100%;
 }
@@ -686,11 +823,11 @@ const dotStart = (i) => Math.max(0, props.currentIndex - 3) + i
   transform: translate(-50%, -50%) scale(1.25);
 }
 
-/* ── 主控制行 ── */
+/* CONTROLS */
 .controls {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   width: 100%;
   justify-content: center;
 }
@@ -724,8 +861,8 @@ const dotStart = (i) => Math.max(0, props.currentIndex - 3) + i
 }
 
 .ctrl-fav.active {
-  color: var(--t-accent4);
-  filter: drop-shadow(0 0 5px var(--t-accent4));
+  color: #f953c6;
+  filter: drop-shadow(0 0 5px #f953c6);
 }
 
 .ctrl-prev, .ctrl-next {
@@ -742,10 +879,9 @@ const dotStart = (i) => Math.max(0, props.currentIndex - 3) + i
   width: 60px;
   height: 60px;
   background: var(--t-play-bg);
-  color: rgba(0, 0, 0, 0.8);
+  color: rgba(0, 0, 0, 0.85);
   border-radius: 50%;
   box-shadow: 0 0 26px color-mix(in srgb, var(--t-accent1) 40%, transparent);
-  transition: all 0.2s;
 }
 
 .ctrl-play svg {
@@ -770,22 +906,27 @@ const dotStart = (i) => Math.max(0, props.currentIndex - 3) + i
 
 .ctrl-list.active {
   color: var(--t-accent1);
-  filter: drop-shadow(0 0 5px var(--t-accent1));
 }
 
-/* ── 音量行（独立一行）── */
+/* SECONDARY ROW */
+.secondary-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
 .volume-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 0 6px;
+  gap: 8px;
+  flex: 1;
 }
 
 .vol-icon {
-  width: 15px;
-  height: 15px;
-  color: var(--t-text2);
+  width: 14px;
+  height: 14px;
+  color: var(--t-text3);
   flex-shrink: 0;
 }
 
@@ -806,10 +947,160 @@ const dotStart = (i) => Math.max(0, props.currentIndex - 3) + i
   height: 12px;
   border-radius: 50%;
   background: var(--t-play-bg);
+  cursor: pointer;
   box-shadow: 0 0 6px var(--t-disc-glow);
 }
 
-/* ── 播放列表圆点 ── */
+.ctrl-mode {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+}
+
+.ctrl-mode svg {
+  width: 17px;
+  height: 17px;
+}
+
+.ctrl-mode:hover {
+  color: var(--t-accent2);
+}
+
+.ctrl-sleep {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.ctrl-sleep svg {
+  width: 17px;
+  height: 17px;
+}
+
+.ctrl-sleep.active {
+  color: var(--t-accent3);
+}
+
+.sleep-badge {
+  position: absolute;
+  bottom: -3px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.48rem;
+  color: var(--t-accent3);
+  font-family: 'Orbitron', monospace;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* SLEEP PANEL */
+.sleep-wrap {
+  position: relative;
+}
+
+.sleep-panel {
+  position: absolute;
+  bottom: calc(100% + 12px);
+  right: 0;
+  width: 226px;
+  background: color-mix(in srgb, var(--t-bg) 94%, white);
+  border: 1px solid var(--t-border);
+  border-radius: 14px;
+  box-shadow: 0 20px 60px var(--t-shadow, rgba(0, 0, 0, 0.5));
+  backdrop-filter: blur(20px);
+  z-index: 30;
+  overflow: hidden;
+}
+
+.sleep-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 11px 14px 9px;
+  border-bottom: 1px solid var(--t-border);
+}
+
+.sleep-title {
+  font-family: 'Orbitron', monospace;
+  font-size: 0.62rem;
+  letter-spacing: 2px;
+  color: var(--t-label-color);
+}
+
+.sleep-cancel {
+  background: none;
+  border: none;
+  color: #ff5555;
+  font-size: 0.72rem;
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-family: inherit;
+  transition: background 0.2s;
+}
+
+.sleep-cancel:hover {
+  background: rgba(255, 85, 85, 0.1);
+}
+
+.sleep-active {
+  text-align: center;
+  padding: 12px 14px 4px;
+}
+
+.sleep-countdown {
+  font-family: 'Orbitron', monospace;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--t-accent3);
+  letter-spacing: 3px;
+}
+
+.sleep-hint {
+  font-size: 0.68rem;
+  color: var(--t-text3);
+  margin-top: 3px;
+}
+
+.sleep-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  padding: 10px 12px 12px;
+}
+
+.sleep-opt {
+  padding: 8px 4px;
+  border-radius: 8px;
+  border: 1px solid var(--t-border);
+  background: var(--t-overlay);
+  color: var(--t-text2);
+  font-family: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.18s;
+  text-align: center;
+}
+
+.sleep-opt:hover {
+  border-color: var(--t-accent3);
+  color: var(--t-accent3);
+  background: color-mix(in srgb, var(--t-accent3) 8%, transparent);
+}
+
+.sleep-opt.active {
+  border-color: var(--t-accent3);
+  color: var(--t-accent3);
+  background: color-mix(in srgb, var(--t-accent3) 12%, transparent);
+  font-weight: 600;
+}
+
+.sleep-opt-end {
+  grid-column: 1 / -1;
+}
+
+/* DOTS */
 .playlist-dots {
   display: flex;
   gap: 7px;
@@ -836,7 +1127,7 @@ const dotStart = (i) => Math.max(0, props.currentIndex - 3) + i
   background: var(--t-text3);
 }
 
-/* ── 播放列表弹出面板（桌面）── */
+/* PLAYLIST PANEL */
 .pl-wrap {
   position: relative;
 }
@@ -850,7 +1141,7 @@ const dotStart = (i) => Math.max(0, props.currentIndex - 3) + i
   background: color-mix(in srgb, var(--t-bg) 92%, white);
   border: 1px solid var(--t-border);
   border-radius: 14px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.65);
+  box-shadow: 0 20px 60px var(--t-shadow, rgba(0, 0, 0, 0.65));
   backdrop-filter: blur(20px);
   overflow: hidden;
   display: flex;
@@ -986,7 +1277,6 @@ const dotStart = (i) => Math.max(0, props.currentIndex - 3) + i
   font-size: 0.85rem;
 }
 
-/* 弹出动画 */
 .pl-anim-enter-active {
   animation: plPop 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -1006,7 +1296,7 @@ const dotStart = (i) => Math.max(0, props.currentIndex - 3) + i
   }
 }
 
-/* ── 右侧歌词 ── */
+/* RIGHT LYRICS */
 .player-right {
   width: 50%;
   display: flex;
@@ -1061,7 +1351,6 @@ const dotStart = (i) => Math.max(0, props.currentIndex - 3) + i
   width: 100%;
   text-align: center;
   padding: 9px 12px;
-  font-family: inherit;
   font-size: 1rem;
   font-weight: 400;
   color: var(--t-text3);
@@ -1124,17 +1413,16 @@ const dotStart = (i) => Math.max(0, props.currentIndex - 3) + i
   opacity: 0.6;
 }
 
-/* ── 手机端默认隐藏 ── */
+/* MOBILE HIDDEN */
 .mobile-player {
   display: none;
 }
 
-/* ── 平板 ≤ 880px ── */
 @media (max-width: 880px) {
   .player-left {
     width: 56%;
-    padding: 26px 22px;
-    gap: 13px;
+    padding: 52px 22px 26px;
+    gap: 12px;
   }
 
   .player-right {
@@ -1148,7 +1436,6 @@ const dotStart = (i) => Math.max(0, props.currentIndex - 3) + i
   }
 }
 
-/* ── 手机 ≤ 600px ── */
 @media (max-width: 600px) {
   .player-left {
     display: none;
@@ -1268,12 +1555,17 @@ const dotStart = (i) => Math.max(0, props.currentIndex - 3) + i
     height: 36px;
   }
 
-  .m-volume-row {
+  .m-secondary-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
     width: 100%;
-    padding: 0 6px;
   }
 
-  /* 手机播放列表：底部弹起遮罩 */
+  .m-volume-row {
+    flex: 1;
+  }
+
   .m-pl-overlay {
     position: fixed;
     inset: 0;
@@ -1297,6 +1589,84 @@ const dotStart = (i) => Math.max(0, props.currentIndex - 3) + i
 
   .m-pl-sheet .pl-scroll {
     max-height: calc(70vh - 54px);
+  }
+
+  .m-sleep-sheet {
+    width: 100%;
+    background: color-mix(in srgb, var(--t-bg) 95%, white);
+    border-top: 1px solid var(--t-border);
+    border-radius: 20px 20px 0 0;
+    overflow: hidden;
+  }
+
+  .m-sleep-active {
+    text-align: center;
+    padding: 16px 20px 8px;
+  }
+
+  .m-sleep-active .sleep-countdown {
+    font-family: 'Orbitron', monospace;
+    font-size: 2.2rem;
+    font-weight: 700;
+    color: var(--t-accent3);
+    letter-spacing: 3px;
+  }
+
+  .m-sleep-active .sleep-hint {
+    font-size: 0.75rem;
+    color: var(--t-text3);
+    margin-top: 4px;
+  }
+
+  .sleep-cancel-btn {
+    margin-top: 12px;
+    padding: 8px 28px;
+    border-radius: 20px;
+    border: 1px solid #ff5555;
+    background: rgba(255, 85, 85, 0.08);
+    color: #ff5555;
+    font-family: inherit;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .sleep-cancel-btn:hover {
+    background: rgba(255, 85, 85, 0.18);
+  }
+
+  .m-sleep-options {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    padding: 12px 16px 24px;
+  }
+
+  .m-sleep-options .sleep-opt {
+    padding: 10px 4px;
+    border-radius: 10px;
+    border: 1px solid var(--t-border);
+    background: var(--t-overlay);
+    color: var(--t-text2);
+    font-family: inherit;
+    font-size: 0.82rem;
+    cursor: pointer;
+    transition: all 0.18s;
+    text-align: center;
+  }
+
+  .m-sleep-options .sleep-opt:hover, .m-sleep-options .sleep-opt.active {
+    border-color: var(--t-accent3);
+    color: var(--t-accent3);
+    background: color-mix(in srgb, var(--t-accent3) 10%, transparent);
+  }
+
+  .m-sleep-options .sleep-opt.active {
+    font-weight: 600;
+  }
+
+  .m-sleep-options .sleep-opt-end {
+    grid-column: 1 / -1;
   }
 
   .m-pl-anim-enter-active {

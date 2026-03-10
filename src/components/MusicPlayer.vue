@@ -3,6 +3,7 @@ import {computed, nextTick, onUnmounted, ref} from 'vue'
 import {findCurrentLyricIndex, parseLRC} from '../utils/lrcParser.js'
 import FileBrowser from './FileBrowser.vue'
 import PlayerView from './PlayerView.vue'
+import MiniBar from './MiniBar.vue'
 
 // =============================================
 // 主题
@@ -265,6 +266,38 @@ const currentLyricIndex = ref(-1)
 const albumRotation = ref(0)
 const audioRef = ref(null)
 const playerViewRef = ref(null)
+
+// 播放模式：order / shuffle / repeat
+const playMode = ref('order')
+const cyclePlayMode = () => {
+  playMode.value = {order: 'shuffle', shuffle: 'repeat', repeat: 'order'}[playMode.value]
+}
+
+// 睡眠定时器
+const sleepMinutes = ref(0)   // 0 = 未启用
+const sleepEndTime = ref(0)   // Date.now() + ms
+let sleepTimerId = null
+const setSleepTimer = (minutes) => {
+  if (sleepTimerId) {
+    clearTimeout(sleepTimerId);
+    sleepTimerId = null
+  }
+  sleepMinutes.value = minutes
+  if (minutes <= 0) {
+    sleepEndTime.value = 0;
+    return
+  }
+  sleepEndTime.value = Date.now() + minutes * 60_000
+  sleepTimerId = setTimeout(() => {
+    audioRef.value?.pause()
+    isPlaying.value = false
+    stopAlbumRotation()
+    sleepMinutes.value = 0
+    sleepEndTime.value = 0
+    sleepTimerId = null
+  }, minutes * 60_000)
+}
+const cancelSleepTimer = () => setSleepTimer(0)
 let rotationRafId = null, lastTimestamp = null
 
 // =============================================
@@ -614,10 +647,23 @@ const togglePlay = () => {
   }
 }
 const prevSong = () => {
-  if (playlist.value.length) loadAndPlay((currentIndex.value - 1 + playlist.value.length) % playlist.value.length)
+  if (!playlist.value.length) return
+  loadAndPlay((currentIndex.value - 1 + playlist.value.length) % playlist.value.length)
 }
-const nextSong = () => {
-  if (playlist.value.length) loadAndPlay((currentIndex.value + 1) % playlist.value.length)
+const nextSong = (fromEnd = false) => {
+  if (!playlist.value.length) return
+  if (fromEnd && playMode.value === 'repeat') {
+    loadAndPlay(currentIndex.value);
+    return
+  }
+  if (playMode.value === 'shuffle') {
+    let idx = Math.floor(Math.random() * playlist.value.length)
+    if (playlist.value.length > 1 && idx === currentIndex.value)
+      idx = (idx + 1) % playlist.value.length
+    loadAndPlay(idx)
+  } else {
+    loadAndPlay((currentIndex.value + 1) % playlist.value.length)
+  }
 }
 const toggleFavorite = async () => {
   if (!currentSong.value) return
@@ -709,7 +755,17 @@ const closePlayer = () => {
 }
 
 // audio 事件
-const onAudioEnded = () => nextSong()
+const onAudioEnded = () => {
+  if (sleepMinutes.value === -1) {
+    audioRef.value?.pause()
+    isPlaying.value = false
+    stopAlbumRotation()
+    sleepMinutes.value = 0
+    sleepEndTime.value = 0
+    return
+  }
+  nextSong(true)
+}
 const onLoadedMetadata = () => {
   duration.value = audioRef.value?.duration || 0
 }
@@ -841,6 +897,7 @@ const stopAlbumRotation = () => {
 
 onUnmounted(() => {
   stopAlbumRotation()
+  if (sleepTimerId) clearTimeout(sleepTimerId)
   document.removeEventListener('mousemove', onDragMove)
   document.removeEventListener('mouseup', stopDrag)
   document.removeEventListener('touchmove', onDragMove)
@@ -871,6 +928,7 @@ onUnmounted(() => {
         :server-mode="sourceMode === 'server'"
         :search-results="searchResults"
         :is-search-mode="isSearchMode"
+        :has-mini-bar="!!currentSong && !showPlayer"
         @play-audio="({ entry, visibleList }) => playAudio(entry, visibleList)"
         @enter-folder="enterFolder"
         @go-back="goBack"
@@ -953,6 +1011,9 @@ onUnmounted(() => {
           :is-favorite="isFavorite"
           :playlist="playlist"
           :current-index="currentIndex"
+          :play-mode="playMode"
+          :sleep-minutes="sleepMinutes"
+          :sleep-end-time="sleepEndTime"
           @close="closePlayer"
           @toggle-play="togglePlay"
           @prev="prevSong"
@@ -963,6 +1024,34 @@ onUnmounted(() => {
           @toggle-fav="toggleFavorite"
           @load-index="loadAndPlay"
           @lyric-seek="onLyricSeek"
+          @remove-from-playlist="removeFromPlaylist"
+          @cycle-play-mode="cyclePlayMode"
+          @set-sleep-timer="setSleepTimer"
+          @cancel-sleep-timer="cancelSleepTimer"
+      />
+    </Transition>
+
+    <!-- 底部迷你播放栏（有歌曲时始终显示，播放页打开时隐藏） -->
+    <Transition name="minibar-slide">
+      <MiniBar
+          v-if="currentSong && !showPlayer"
+          :display-title="displayTitle"
+          :artist-name="artistName"
+          :is-playing="isPlaying"
+          :is-favorite="isFavorite"
+          :volume="volume"
+          :play-mode="playMode"
+          :playlist="playlist"
+          :current-index="currentIndex"
+          :progress-percent="progressPercent"
+          @open-player="showPlayer = true"
+          @toggle-play="togglePlay"
+          @prev="prevSong"
+          @next="nextSong"
+          @toggle-fav="toggleFavorite"
+          @volume-change="onVolumeChange"
+          @cycle-play-mode="cyclePlayMode"
+          @load-index="loadAndPlay"
           @remove-from-playlist="removeFromPlaylist"
       />
     </Transition>
@@ -1081,6 +1170,26 @@ onUnmounted(() => {
   to {
     opacity: 0;
     transform: scale(0.95)
+  }
+}
+
+/* 迷你播放栏过渡 */
+.minibar-slide-enter-active {
+  animation: minibarIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.minibar-slide-leave-active {
+  animation: minibarIn 0.2s ease reverse;
+}
+
+@keyframes minibarIn {
+  from {
+    opacity: 0;
+    transform: translateY(100%)
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0)
   }
 }
 

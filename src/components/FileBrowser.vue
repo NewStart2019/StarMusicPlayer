@@ -14,6 +14,7 @@ const props = defineProps({
   serverMode: {type: Boolean, default: false},
   searchResults: {type: Array, default: null},
   isSearchMode: {type: Boolean, default: false},
+  hasMiniBar: {type: Boolean, default: false},
 })
 
 const emit = defineEmits([
@@ -92,7 +93,7 @@ const handleDisconnect = () => {
 </script>
 
 <template>
-  <div class="browser-container">
+  <div class="browser-container" :style="hasMiniBar ? { paddingBottom: '68px' } : {}">
 
     <!-- ===== Header ===== -->
     <header class="header">
