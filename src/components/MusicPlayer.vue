@@ -9,10 +9,43 @@ import PlayerView from './PlayerView.vue'
 // =============================================
 const THEMES = [
   {
-    id: 'cyber',
-    name: '赛博霓虹',
-    icon: '⚡',
-    vars: {
+    id: 'daylight', name: '白日晴空', icon: '☀️', vars: {
+      '--t-bg': '#f5f7fa',
+      '--t-bg-card': 'rgba(255,255,255,0.85)',
+      '--t-bg-glass': 'rgba(245,247,250,0.92)',
+      '--t-accent1': '#3b82f6',
+      '--t-accent2': '#6366f1',
+      '--t-accent3': '#06b6d4',
+      '--t-accent4': '#f59e0b',
+      '--t-text': '#111827',
+      '--t-text2': 'rgba(30,41,59,0.65)',
+      '--t-text3': 'rgba(30,41,59,0.35)',
+      '--t-border': 'rgba(59,130,246,0.18)',
+      '--t-orb1': '#93c5fd',
+      '--t-orb2': '#a5b4fc',
+      '--t-orb3': '#67e8f9',
+      '--t-grid': 'rgba(59,130,246,0.06)',
+      '--t-play-bg': 'linear-gradient(135deg,#3b82f6,#6366f1)',
+      '--t-lyric-active': '#3b82f6',
+      '--t-lyric-glow': 'rgba(59,130,246,0.35)',
+      '--t-progress': 'linear-gradient(90deg,#3b82f6,#6366f1)',
+      '--t-disc-bg': 'radial-gradient(circle at 30% 30%,#dbeafe,#ede9fe 70%)',
+      '--t-disc-border': 'rgba(99,102,241,0.25)',
+      '--t-disc-center': 'linear-gradient(135deg,#3b82f6,#6366f1)',
+      '--t-disc-glow': 'rgba(99,102,241,0.2)',
+      '--t-label-color': 'rgba(59,130,246,0.7)',
+      '--t-folder-bg': 'rgba(245,158,11,0.1)',
+      '--t-folder-clr': '#d97706',
+      '--t-audio-bg': 'rgba(59,130,246,0.1)',
+      '--t-audio-clr': '#3b82f6',
+      '--t-title-grad': 'linear-gradient(90deg,#111827 0%,#3b82f6 100%)',
+      '--t-overlay': 'rgba(0,0,0,0.05)',
+      '--t-overlay2': 'rgba(0,0,0,0.04)',
+      '--t-shadow': 'rgba(0,0,0,0.15)'
+    }
+  },
+  {
+    id: 'cyber', name: '赛博霓虹', icon: '⚡', vars: {
       '--t-bg': '#050810',
       '--t-bg-card': 'rgba(255,255,255,0.04)',
       '--t-bg-glass': 'rgba(10,15,35,0.85)',
@@ -41,7 +74,10 @@ const THEMES = [
       '--t-folder-clr': '#ffb900',
       '--t-audio-bg': 'rgba(0,242,254,0.1)',
       '--t-audio-clr': '#00f2fe',
-      '--t-title-grad': 'linear-gradient(90deg,#fff 0%,rgba(0,242,254,0.9) 100%)'
+      '--t-title-grad': 'linear-gradient(90deg,#fff 0%,rgba(0,242,254,0.9) 100%)',
+      '--t-overlay': 'rgba(255,255,255,0.05)',
+      '--t-overlay2': 'rgba(255,255,255,0.04)',
+      '--t-shadow': 'rgba(0,0,0,0.5)'
     }
   },
   {
@@ -74,7 +110,10 @@ const THEMES = [
       '--t-folder-clr': '#ffe066',
       '--t-audio-bg': 'rgba(255,133,179,0.1)',
       '--t-audio-clr': '#ff85b3',
-      '--t-title-grad': 'linear-gradient(90deg,#fff0f5 0%,rgba(255,133,179,0.9) 100%)'
+      '--t-title-grad': 'linear-gradient(90deg,#fff0f5 0%,rgba(255,133,179,0.9) 100%)',
+      '--t-overlay': 'rgba(255,255,255,0.05)',
+      '--t-overlay2': 'rgba(255,255,255,0.04)',
+      '--t-shadow': 'rgba(0,0,0,0.5)'
     }
   },
   {
@@ -107,7 +146,10 @@ const THEMES = [
       '--t-folder-clr': '#ffd166',
       '--t-audio-bg': 'rgba(57,217,138,0.1)',
       '--t-audio-clr': '#39d98a',
-      '--t-title-grad': 'linear-gradient(90deg,#f0fff4 0%,rgba(57,217,138,0.9) 100%)'
+      '--t-title-grad': 'linear-gradient(90deg,#f0fff4 0%,rgba(57,217,138,0.9) 100%)',
+      '--t-overlay': 'rgba(255,255,255,0.05)',
+      '--t-overlay2': 'rgba(255,255,255,0.04)',
+      '--t-shadow': 'rgba(0,0,0,0.5)'
     }
   },
   {
@@ -140,14 +182,14 @@ const THEMES = [
       '--t-folder-clr': '#ffd60a',
       '--t-audio-bg': 'rgba(123,97,255,0.1)',
       '--t-audio-clr': '#7b61ff',
-      '--t-title-grad': 'linear-gradient(90deg,#f0f4ff 0%,rgba(123,97,255,0.9) 100%)'
+      '--t-title-grad': 'linear-gradient(90deg,#f0f4ff 0%,rgba(123,97,255,0.9) 100%)',
+      '--t-overlay': 'rgba(255,255,255,0.05)',
+      '--t-overlay2': 'rgba(255,255,255,0.04)',
+      '--t-shadow': 'rgba(0,0,0,0.5)'
     }
   },
   {
-    id: 'ember',
-    name: '烈焰余烬',
-    icon: '🔥',
-    vars: {
+    id: 'ember', name: '烈焰余烬', icon: '🔥', vars: {
       '--t-bg': '#0c0500',
       '--t-bg-card': 'rgba(255,120,30,0.04)',
       '--t-bg-glass': 'rgba(18,6,0,0.9)',
@@ -176,12 +218,15 @@ const THEMES = [
       '--t-folder-clr': '#ffe14d',
       '--t-audio-bg': 'rgba(255,107,43,0.1)',
       '--t-audio-clr': '#ff6b2b',
-      '--t-title-grad': 'linear-gradient(90deg,#fff5ee 0%,rgba(255,107,43,0.9) 100%)'
+      '--t-title-grad': 'linear-gradient(90deg,#fff5ee 0%,rgba(255,107,43,0.9) 100%)',
+      '--t-overlay': 'rgba(255,255,255,0.05)',
+      '--t-overlay2': 'rgba(255,255,255,0.04)',
+      '--t-shadow': 'rgba(0,0,0,0.5)'
     }
   },
 ]
 
-const currentThemeId = ref('cyber')
+const currentThemeId = ref('daylight')
 const themeVars = computed(() => THEMES.find(t => t.id === currentThemeId.value)?.vars ?? {})
 const applyTheme = (id) => {
   if (THEMES.find(t => t.id === id)) currentThemeId.value = id
@@ -198,6 +243,10 @@ const errorMsg = ref('')
 const sourceMode = ref('local')
 const serverTree = ref(null)
 const fileBrowserRef = ref(null)
+
+// ── 全局搜索状态 ──────────────────────────────
+const isSearchMode = ref(false)
+const searchResults = ref(null)
 
 // =============================================
 // 播放器状态
@@ -394,6 +443,7 @@ const disconnectServer = () => {
   allEntries.value = null
   currentEntries.value = [];
   pathStack.value = []
+  exitSearchMode()
   if (showPlayer.value) closePlayer()
 }
 
@@ -421,11 +471,13 @@ const findFirstAudio = (node) => {
 // 导航
 // =============================================
 const enterFolder = (entry) => {
+  exitSearchMode()
   fileBrowserRef.value?.clearSearch()
   if (sourceMode.value === 'server') navigateToServerPath(entry.path.slice(1))
   else navigateToPath(entry.path.slice(1))
 }
 const goBack = () => {
+  exitSearchMode()
   fileBrowserRef.value?.clearSearch()
   const nav = sourceMode.value === 'server' ? navigateToServerPath : navigateToPath
   if (pathStack.value.length <= 1) {
@@ -434,15 +486,53 @@ const goBack = () => {
   } else nav(pathStack.value[pathStack.value.length - 2].path)
 }
 const goRoot = () => {
+  exitSearchMode()
   fileBrowserRef.value?.clearSearch()
   pathStack.value = []
   if (sourceMode.value === 'server') navigateToServerPath([])
   else navigateToPath([])
 }
 const breadcrumbNav = (item) => {
+  exitSearchMode()
   fileBrowserRef.value?.clearSearch()
   if (sourceMode.value === 'server') navigateToServerPath(item.path)
   else navigateToPath(item.path)
+}
+
+// ── 全局搜索 ─────────────────────────────────
+// 递归收集本地 Map 树中的所有音频文件
+const collectLocalAudio = (node, result = []) => {
+  if (!node?.children) return result
+  node.children.forEach(e => {
+    if (e.isAudio) result.push(e)
+    else if (e.type === 'folder') collectLocalAudio(e, result)
+  })
+  return result
+}
+// 递归收集服务端数组树中的所有音频文件
+const collectServerAudio = (node, result = []) => {
+  if (!node) return result
+  if (node.isAudio) {
+    result.push(node);
+    return result
+  }
+  for (const c of (node.children || [])) collectServerAudio(c, result)
+  return result
+}
+
+const handleSearchAll = (keyword) => {
+  if (!allEntries.value || !keyword.trim()) return
+  const q = keyword.toLowerCase()
+  const all = sourceMode.value === 'server'
+      ? collectServerAudio(allEntries.value)
+      : collectLocalAudio(allEntries.value)
+  searchResults.value = all.filter(e => e.name.toLowerCase().includes(q))
+  isSearchMode.value = true
+}
+
+const exitSearchMode = () => {
+  isSearchMode.value = false
+  searchResults.value = null
 }
 
 // =============================================
@@ -779,6 +869,8 @@ onUnmounted(() => {
         :themes="THEMES"
         :current-theme-id="currentThemeId"
         :server-mode="sourceMode === 'server'"
+        :search-results="searchResults"
+        :is-search-mode="isSearchMode"
         @play-audio="({ entry, visibleList }) => playAudio(entry, visibleList)"
         @enter-folder="enterFolder"
         @go-back="goBack"
@@ -790,6 +882,8 @@ onUnmounted(() => {
         @refresh-server="refreshServer"
         @apply-theme="applyTheme"
         @show-favorites="toggleFavPanel"
+        @search-all="handleSearchAll"
+        @clear-search="exitSearchMode"
     />
 
     <!-- 我的收藏面板 -->

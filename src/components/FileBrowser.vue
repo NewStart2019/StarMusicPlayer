@@ -12,12 +12,14 @@ const props = defineProps({
   themes: {type: Array, required: true},
   currentThemeId: {type: String, required: true},
   serverMode: {type: Boolean, default: false},
+  searchResults: {type: Array, default: null},
+  isSearchMode: {type: Boolean, default: false},
 })
 
 const emit = defineEmits([
   'play-audio', 'enter-folder', 'go-back', 'go-root', 'breadcrumb-nav',
   'folder-select', 'connect-server', 'disconnect', 'refresh-server', 'apply-theme',
-  'show-favorites',
+  'show-favorites', 'search-all', 'clear-search',
 ])
 
 /* ── 本地 UI 状态 ─────────────────────────── */
@@ -38,16 +40,27 @@ const setServerError = (v) => {
   serverError.value = v
 }
 const clearSearch = () => {
-  searchQuery.value = ''
+  searchQuery.value = '';
+  emit('clear-search')
 }
 defineExpose({setServerLoading, setServerError, clearSearch})
 
-/* ── 过滤 ──────────────────────────────────── */
+/* ── Enter 触发全局搜索 ────────────────────── */
+const handleSearchEnter = () => {
+  const q = searchQuery.value.trim()
+  if (!q) {
+    emit('clear-search');
+    return
+  }
+  emit('search-all', q)
+}
+
+/* ── 当前展示列表 ──────────────────────────── */
 const filteredEntries = computed(() => {
-  if (!searchQuery.value.trim()) return props.currentEntries
-  const q = searchQuery.value.toLowerCase()
-  return props.currentEntries.filter(e => e.name.toLowerCase().includes(q))
+  if (props.isSearchMode && props.searchResults) return props.searchResults
+  return props.currentEntries
 })
+
 
 /* ── 主题选择器点外部关闭 ─────────────────── */
 const onDocClick = (e) => {
@@ -100,7 +113,8 @@ const handleDisconnect = () => {
             <circle cx="11" cy="11" r="8"/>
             <path d="m21 21-4.35-4.35"/>
           </svg>
-          <input v-model="searchQuery" class="search-input" type="text" placeholder="搜索文件..."/>
+          <input v-model="searchQuery" class="search-input" type="text" placeholder="搜索歌曲，按 Enter"
+                 @keydown.enter="handleSearchEnter"/>
         </div>
 
         <div v-if="hasFolder" class="source-badge" :class="sourceMode">
@@ -200,15 +214,35 @@ const handleDisconnect = () => {
           </svg>
           根目录
         </span>
-        <template v-for="(item, i) in pathStack" :key="i">
+        <!-- 普通目录导航 -->
+        <template v-if="!isSearchMode">
+          <template v-for="(item, i) in pathStack" :key="i">
+            <span class="crumb-sep">›</span>
+            <span class="crumb" :class="{ 'crumb-active': i === pathStack.length - 1 }"
+                  @click="emit('breadcrumb-nav', item)">{{ item.name }}</span>
+          </template>
+        </template>
+        <!-- 搜索模式面包屑 -->
+        <template v-else>
           <span class="crumb-sep">›</span>
-          <span class="crumb" :class="{ 'crumb-active': i === pathStack.length - 1 }"
-                @click="emit('breadcrumb-nav', item)">{{ item.name }}</span>
+          <span class="crumb crumb-search crumb-active">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12">
+              <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+            </svg>
+            搜索结果（{{ filteredEntries.length }} 首）
+          </span>
+          <button class="crumb-clear-btn" @click="emit('clear-search')" title="退出搜索">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+            退出搜索
+          </button>
         </template>
       </nav>
 
       <div class="toolbar">
-        <button v-if="pathStack.length > 0" class="btn-toolbar" @click="emit('go-back')">
+        <button v-if="pathStack.length > 0 && !isSearchMode" class="btn-toolbar" @click="emit('go-back')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="m15 18-6-6 6-6"/>
           </svg>
@@ -268,7 +302,7 @@ const handleDisconnect = () => {
           <line x1="9" y1="9" x2="9.01" y2="9"/>
           <line x1="15" y1="9" x2="15.01" y2="9"/>
         </svg>
-        <p>{{ searchQuery ? '没有找到匹配的文件' : '此目录没有音频文件' }}</p>
+        <p>{{ isSearchMode ? '没有找到匹配的歌曲' : '此目录没有音频文件' }}</p>
       </div>
     </div>
 
@@ -359,7 +393,7 @@ const handleDisconnect = () => {
 .search-input {
   width: 100%;
   padding: 8px 14px 8px 36px;
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--t-overlay);
   border: 1px solid var(--t-border);
   border-radius: 999px;
   color: var(--t-text);
@@ -436,7 +470,7 @@ const handleDisconnect = () => {
   gap: 6px;
   padding: 7px 14px;
   border-radius: 20px;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--t-overlay);
   border: 1px solid var(--t-border);
   color: var(--t-text2);
   font-family: inherit;
@@ -479,7 +513,7 @@ const handleDisconnect = () => {
   border: 1px solid var(--t-border);
   border-radius: 14px;
   padding: 8px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 20px 60px var(--t-shadow, rgba(0, 0, 0, 0.5));
   backdrop-filter: blur(20px);
 }
 
@@ -505,7 +539,7 @@ const handleDisconnect = () => {
 }
 
 .theme-opt:hover {
-  background: rgba(255, 255, 255, 0.07);
+  background: var(--t-overlay);
   color: var(--t-text);
 }
 
@@ -700,7 +734,7 @@ const handleDisconnect = () => {
 
 .btn-server:hover {
   border-color: var(--t-accent2);
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--t-overlay);
   transform: translateY(-2px);
 }
 
@@ -738,7 +772,7 @@ const handleDisconnect = () => {
   padding: 9px 14px;
   border-radius: 8px;
   border: 1px solid var(--t-border);
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--t-overlay);
   color: var(--t-text);
   font-size: 0.88rem;
   font-family: inherit;
@@ -801,7 +835,7 @@ const handleDisconnect = () => {
 
 .sp-hint code {
   color: var(--t-accent2);
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--t-overlay2, rgba(255, 255, 255, 0.06));
   padding: 1px 5px;
   border-radius: 4px;
   font-size: 0.72rem;
@@ -851,6 +885,33 @@ const handleDisconnect = () => {
   cursor: default;
 }
 
+.crumb-search {
+  max-width: 220px;
+  color: var(--t-accent2);
+}
+
+.crumb-clear-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 4px;
+  padding: 2px 10px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--t-accent2) 35%, transparent);
+  background: color-mix(in srgb, var(--t-accent2) 8%, transparent);
+  color: var(--t-accent2);
+  font-family: inherit;
+  font-size: 0.74rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.crumb-clear-btn:hover {
+  background: color-mix(in srgb, var(--t-accent2) 18%, transparent);
+  border-color: var(--t-accent2);
+}
+
 .crumb-sep {
   color: var(--t-text3);
   font-size: 1rem;
@@ -869,8 +930,8 @@ const handleDisconnect = () => {
   align-items: center;
   gap: 5px;
   padding: 7px 14px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--t-overlay);
+  border: 1px solid var(--t-border);
   border-radius: 8px;
   color: var(--t-text2);
   font-family: inherit;
@@ -928,7 +989,7 @@ const handleDisconnect = () => {
   gap: 7px;
   padding: 15px 10px 11px;
   background: var(--t-bg-card);
-  border: 1px solid rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--t-border);
   border-radius: 12px;
   cursor: pointer;
   text-align: center;
