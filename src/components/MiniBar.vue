@@ -1,5 +1,5 @@
 <script setup>
-import {ref, watch} from 'vue'
+import {onUnmounted, ref, watch} from 'vue'
 
 const props = defineProps({
   displayTitle: {type: String, required: true},
@@ -11,27 +11,56 @@ const props = defineProps({
   playlist: {type: Array, required: true},
   currentIndex: {type: Number, required: true},
   progressPercent: {type: Number, required: true},
+  sleepMinutes: {type: Number, default: 0},
+  sleepEndTime: {type: Number, default: 0},
 })
 
 const emit = defineEmits([
   'open-player', 'toggle-play', 'prev', 'next',
   'toggle-fav', 'volume-change', 'cycle-play-mode',
   'load-index', 'remove-from-playlist',
+  'set-sleep-timer', 'cancel-sleep-timer',
 ])
 
 const showPlaylist = ref(false)
+const showSleepMenu = ref(false)
 const playlistRef = ref(null)
+const sleepRef = ref(null)
 
-const onDocClick = (e) => {
-  if (playlistRef.value && !playlistRef.value.contains(e.target))
-    showPlaylist.value = false
+// 倒计时显示
+const sleepCountdown = ref('')
+let countdownTimer = null
+const updateCountdown = () => {
+  if (!props.sleepEndTime) {
+    sleepCountdown.value = '';
+    return
+  }
+  const diff = Math.max(0, props.sleepEndTime - Date.now())
+  const m = Math.floor(diff / 60000)
+  const s = Math.floor((diff % 60000) / 1000)
+  sleepCountdown.value = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 }
-watch(showPlaylist, (v) => {
-  v ? document.addEventListener('click', onDocClick, true)
-      : document.removeEventListener('click', onDocClick, true)
+watch(() => props.sleepEndTime, (v) => {
+  if (countdownTimer) clearInterval(countdownTimer)
+  if (v) {
+    updateCountdown();
+    countdownTimer = setInterval(updateCountdown, 1000)
+  } else sleepCountdown.value = ''
+}, {immediate: true})
+onUnmounted(() => {
+  if (countdownTimer) clearInterval(countdownTimer)
 })
 
-const playModeIcon = {order: 'order', shuffle: 'shuffle', repeat: 'repeat'}
+const onDocClick = (e) => {
+  if (playlistRef.value && !playlistRef.value.contains(e.target)) showPlaylist.value = false
+  if (sleepRef.value && !sleepRef.value.contains(e.target)) showSleepMenu.value = false
+}
+watch([showPlaylist, showSleepMenu], ([p, s]) => {
+  if (p || s) document.addEventListener('click', onDocClick, true)
+  else document.removeEventListener('click', onDocClick, true)
+})
+
+const sleepOptions = [15, 30, 45, 60, 90]
 </script>
 
 <template>
@@ -134,6 +163,45 @@ const playModeIcon = {order: 'order', shuffle: 'shuffle', repeat: 'repeat'}
           </svg>
           <input type="range" min="0" max="1" step="0.01" :value="volume" class="mini-vol-slider"
                  @input="emit('volume-change', $event)"/>
+        </div>
+
+        <!-- 睡眠定时 -->
+        <div class="mini-sleep-wrap" ref="sleepRef">
+          <button class="mb-btn mb-sleep" :class="{ active: sleepMinutes > 0 }"
+                  @click.stop="showSleepMenu = !showSleepMenu; showPlaylist = false"
+                  :title="sleepMinutes > 0 ? `定时停止：${sleepCountdown}` : '定时停止'">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <polyline points="12 6 12 12 16 14"/>
+            </svg>
+            <span v-if="sleepMinutes > 0" class="mb-sleep-badge">{{ sleepCountdown }}</span>
+          </button>
+          <Transition name="pl-up">
+            <div v-if="showSleepMenu" class="mini-sleep-panel">
+              <div class="mini-sleep-header">
+                <span>定时停止播放</span>
+                <button v-if="sleepMinutes > 0" class="mini-sleep-cancel"
+                        @click="emit('cancel-sleep-timer'); showSleepMenu = false">取消
+                </button>
+              </div>
+              <div v-if="sleepMinutes > 0" class="mini-sleep-active">
+                <span class="mini-sleep-cd">{{ sleepCountdown }}</span>
+                <span class="mini-sleep-hint">后停止播放</span>
+              </div>
+              <div class="mini-sleep-opts">
+                <button v-for="min in sleepOptions" :key="min"
+                        class="mini-sleep-opt" :class="{ active: sleepMinutes === min }"
+                        @click="emit('set-sleep-timer', min); showSleepMenu = false">
+                  {{ min }}分钟
+                </button>
+                <button class="mini-sleep-opt mini-sleep-opt-end"
+                        :class="{ active: sleepMinutes === -1 }"
+                        @click="emit('set-sleep-timer', -1); showSleepMenu = false">
+                  本曲结束后
+                </button>
+              </div>
+            </div>
+          </Transition>
         </div>
 
         <!-- 播放列表 -->
@@ -410,6 +478,139 @@ const playModeIcon = {order: 'order', shuffle: 'shuffle', repeat: 'repeat'}
   background: var(--t-accent1);
   cursor: pointer;
   box-shadow: 0 0 6px var(--t-disc-glow);
+}
+
+/* 睡眠定时 */
+.mini-sleep-wrap {
+  position: relative;
+}
+
+.mb-sleep {
+  padding: 7px;
+  position: relative;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.mb-sleep svg {
+  width: 18px;
+  height: 18px;
+}
+
+.mb-sleep.active {
+  color: var(--t-accent3);
+}
+
+.mb-sleep.active:hover {
+  color: var(--t-accent3);
+  transform: scale(1.1);
+}
+
+.mb-sleep-badge {
+  font-size: 0.46rem;
+  font-family: 'Orbitron', monospace;
+  color: var(--t-accent3);
+  line-height: 1;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.mini-sleep-panel {
+  position: absolute;
+  bottom: calc(100% + 12px);
+  right: 0;
+  width: 210px;
+  background: color-mix(in srgb, var(--t-bg) 96%, white);
+  border: 1px solid var(--t-border);
+  border-radius: 14px;
+  box-shadow: 0 -16px 48px var(--t-shadow, rgba(0, 0, 0, 0.4));
+  backdrop-filter: blur(20px);
+  overflow: hidden;
+}
+
+.mini-sleep-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px 8px;
+  border-bottom: 1px solid var(--t-border);
+  font-size: 0.68rem;
+  letter-spacing: 1.5px;
+  color: var(--t-label-color);
+  font-family: 'Orbitron', monospace;
+}
+
+.mini-sleep-cancel {
+  background: none;
+  border: none;
+  color: #ff5555;
+  font-size: 0.7rem;
+  cursor: pointer;
+  padding: 1px 6px;
+  border-radius: 5px;
+  font-family: inherit;
+  transition: background 0.2s;
+}
+
+.mini-sleep-cancel:hover {
+  background: rgba(255, 85, 85, 0.1);
+}
+
+.mini-sleep-active {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 8px 12px 4px;
+}
+
+.mini-sleep-cd {
+  font-family: 'Orbitron', monospace;
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--t-accent3);
+  letter-spacing: 2px;
+}
+
+.mini-sleep-hint {
+  font-size: 0.7rem;
+  color: var(--t-text3);
+}
+
+.mini-sleep-opts {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 5px;
+  padding: 8px 10px 10px;
+}
+
+.mini-sleep-opt {
+  padding: 7px 4px;
+  border-radius: 7px;
+  border: 1px solid var(--t-border);
+  background: var(--t-overlay);
+  color: var(--t-text2);
+  font-family: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.18s;
+  text-align: center;
+}
+
+.mini-sleep-opt:hover {
+  border-color: var(--t-accent3);
+  color: var(--t-accent3);
+  background: color-mix(in srgb, var(--t-accent3) 8%, transparent);
+}
+
+.mini-sleep-opt.active {
+  border-color: var(--t-accent3);
+  color: var(--t-accent3);
+  background: color-mix(in srgb, var(--t-accent3) 12%, transparent);
+  font-weight: 600;
+}
+
+.mini-sleep-opt-end {
+  grid-column: 1 / -1;
 }
 
 /* 播放列表 */

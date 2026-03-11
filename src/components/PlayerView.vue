@@ -587,6 +587,12 @@ const playModeLabel = computed(() => ({order: '顺序播放', shuffle: '随机�
   padding: 52px 44px 30px;
   border-right: 1px solid var(--t-border);
   overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.player-left::-webkit-scrollbar {
+  display: none;
 }
 
 .song-info {

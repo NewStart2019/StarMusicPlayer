@@ -749,9 +749,6 @@ const playFromFavorites = async (song) => {
 }
 const closePlayer = () => {
   showPlayer.value = false
-  audioRef.value?.pause();
-  isPlaying.value = false;
-  stopAlbumRotation()
 }
 
 // audio 事件
@@ -1044,6 +1041,8 @@ onUnmounted(() => {
           :playlist="playlist"
           :current-index="currentIndex"
           :progress-percent="progressPercent"
+          :sleep-minutes="sleepMinutes"
+          :sleep-end-time="sleepEndTime"
           @open-player="showPlayer = true"
           @toggle-play="togglePlay"
           @prev="prevSong"
@@ -1053,6 +1052,8 @@ onUnmounted(() => {
           @cycle-play-mode="cyclePlayMode"
           @load-index="loadAndPlay"
           @remove-from-playlist="removeFromPlaylist"
+          @set-sleep-timer="setSleepTimer"
+          @cancel-sleep-timer="cancelSleepTimer"
       />
     </Transition>
 
