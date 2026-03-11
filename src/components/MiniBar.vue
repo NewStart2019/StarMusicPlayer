@@ -1,6 +1,7 @@
 <script setup>
-import {onUnmounted, ref, watch} from 'vue'
+import {onMounted, onUnmounted, ref, watch} from 'vue'
 import SleepTimer from './SleepTimer.vue'
+import PlaylistPanel from './PlaylistPanel.vue'
 
 const props = defineProps({
   displayTitle: {type: String, required: true},
@@ -24,6 +25,14 @@ const emit = defineEmits([
 ])
 
 const showPlaylist = ref(false)
+const isMobile = ref(false)
+const checkMobile = () => {
+  isMobile.value = window.innerWidth <= 640
+}
+onMounted(() => {
+  checkMobile();
+  window.addEventListener('resize', checkMobile)
+})
 const playlistRef = ref(null)
 
 // 倒计时显示（已移入 SleepTimer 组件）
@@ -35,7 +44,10 @@ watch(showPlaylist, (p) => {
   if (p) document.addEventListener('click', onDocClick, true)
   else document.removeEventListener('click', onDocClick, true)
 })
-onUnmounted(() => document.removeEventListener('click', onDocClick, true))
+onUnmounted(() => {
+  document.removeEventListener('click', onDocClick, true);
+  window.removeEventListener('resize', checkMobile)
+})
 
 </script>
 
@@ -165,36 +177,17 @@ onUnmounted(() => document.removeEventListener('click', onDocClick, true))
             <span class="pl-badge" v-if="playlist.length">{{ playlist.length }}</span>
           </button>
 
-          <!-- 桌面端浮窗 -->
-          <Transition name="pl-up">
-            <div v-if="showPlaylist" class="mini-pl-panel desktop-pl">
-              <div class="mini-pl-header">
-                <span>播放列表</span>
-                <span class="mini-pl-count">{{ playlist.length }} 首</span>
-                <button class="mini-pl-close" @click.stop="showPlaylist = false">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <line x1="18" y1="6" x2="6" y2="18"/>
-                    <line x1="6" y1="6" x2="18" y2="18"/>
-                  </svg>
-                </button>
-              </div>
-              <div class="mini-pl-scroll">
-                <div v-if="playlist.length === 0" class="mini-pl-empty">播放列表为空</div>
-                <div v-for="(song, i) in playlist" :key="song.name + i"
-                     class="mini-pl-item" :class="{ 'pl-cur': i === currentIndex }"
-                     @click="emit('load-index', i); showPlaylist = false">
-                  <span class="mini-pl-num">{{ i + 1 }}</span>
-                  <span class="mini-pl-name">{{ song.name.replace(/\.[^.]+$/, '') }}</span>
-                  <button class="mini-pl-del" @click.stop="emit('remove-from-playlist', i)">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                      <line x1="18" y1="6" x2="6" y2="18"/>
-                      <line x1="6" y1="6" x2="18" y2="18"/>
-                    </svg>
-                  </button>
-                </div>
-              </div>
-            </div>
-          </Transition>
+          <!-- 桌面端：右侧固定侧栏 -->
+          <PlaylistPanel
+              :show="showPlaylist && !isMobile"
+              :playlist="playlist"
+              :current-index="currentIndex"
+              :teleport="true"
+              offset-bottom="68px"
+              @close="showPlaylist = false"
+              @load-index="emit('load-index', $event)"
+              @remove-from-playlist="emit('remove-from-playlist', $event)"
+          />
         </div>
       </div>
     </div>
@@ -502,159 +495,7 @@ onUnmounted(() => document.removeEventListener('click', onDocClick, true))
   pointer-events: none;
 }
 
-.mini-pl-panel {
-  position: fixed;
-  top: 0;
-  right: 0;
-  bottom: 68px;
-  width: min(340px, 100vw);
-  background: color-mix(in srgb, var(--t-bg) 94%, white);
-  border-left: 1px solid var(--t-border);
-  backdrop-filter: blur(20px);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  box-shadow: -20px 0 60px rgba(0, 0, 0, 0.4);
-  z-index: 95;
-}
-
-.mini-pl-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 18px 20px 14px;
-  font-size: 0.72rem;
-  letter-spacing: 2px;
-  color: var(--t-label-color);
-  font-family: 'Orbitron', monospace;
-  border-bottom: 1px solid var(--t-border);
-}
-
-.mini-pl-count {
-  font-size: 0.72rem;
-  color: var(--t-text3);
-  font-family: inherit;
-}
-
-.mini-pl-close {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--t-text3);
-  padding: 4px;
-  border-radius: 6px;
-  display: flex;
-  transition: color 0.2s;
-}
-
-.mini-pl-close svg {
-  width: 16px;
-  height: 16px;
-}
-
-.mini-pl-close:hover {
-  color: var(--t-text);
-  background: rgba(255, 255, 255, 0.08);
-}
-
-.mini-pl-scroll {
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: var(--t-border) transparent;
-  flex: 1;
-}
-
-.mini-pl-empty {
-  padding: 20px;
-  text-align: center;
-  color: var(--t-text3);
-  font-size: 0.82rem;
-}
-
-.mini-pl-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 9px 12px;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-
-.mini-pl-item:hover {
-  background: var(--t-overlay);
-}
-
-.mini-pl-item.pl-cur {
-  background: color-mix(in srgb, var(--t-accent1) 8%, transparent);
-}
-
-.mini-pl-item.pl-cur .mini-pl-name {
-  color: var(--t-accent1);
-  font-weight: 600;
-}
-
-.mini-pl-num {
-  font-size: 0.7rem;
-  color: var(--t-text3);
-  width: 18px;
-  flex-shrink: 0;
-  text-align: right;
-}
-
-.mini-pl-name {
-  flex: 1;
-  font-size: 0.82rem;
-  color: var(--t-text2);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.mini-pl-del {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--t-text3);
-  padding: 2px;
-  border-radius: 4px;
-  opacity: 0;
-  transition: all 0.15s;
-  display: flex;
-}
-
-.mini-pl-del svg {
-  width: 12px;
-  height: 12px;
-}
-
-.mini-pl-item:hover .mini-pl-del {
-  opacity: 1;
-}
-
-.mini-pl-del:hover {
-  color: #ff5050;
-  background: rgba(255, 80, 80, 0.12);
-}
-
-/* 右侧滑入动画 */
-.pl-up-enter-active {
-  animation: plSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.pl-up-leave-active {
-  animation: plSlideIn 0.22s ease reverse;
-}
-
-@keyframes plSlideIn {
-  from {
-    opacity: 0;
-    transform: translateX(40px)
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0)
-  }
-}
+/* desktop playlist: see PlaylistPanel.vue */
 
 /* 响应式：小屏收起音量和播放模式 */
 @media (max-width: 640px) {
@@ -677,11 +518,6 @@ onUnmounted(() => document.removeEventListener('click', onDocClick, true))
 
   .mb-fav {
     display: none;
-  }
-
-  /* 桌面浮窗隐藏，改用全屏 sheet */
-  .desktop-pl {
-    display: none !important;
   }
 }
 

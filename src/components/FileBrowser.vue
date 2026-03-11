@@ -199,7 +199,6 @@ const handleDisconnect = () => {
             </button>
           </div>
           <p v-if="serverError" class="sp-error">{{ serverError }}</p>
-          <p class="sp-hint">启动服务器：<code>node server.js --root /your/music</code></p>
         </div>
 
         <p v-if="errorMsg" class="error-msg">{{ errorMsg }}</p>
@@ -331,7 +330,7 @@ const handleDisconnect = () => {
   height: 62px;
   min-height: 62px;
   border-bottom: 1px solid var(--t-border);
-  background: var(--t-header-bg, rgba(0, 0, 0, 0.3));
+  background: var(--t-bg-glass, rgba(0, 0, 0, 0.3));
   backdrop-filter: blur(20px);
   flex-shrink: 0;
   gap: 16px;
@@ -717,7 +716,7 @@ const handleDisconnect = () => {
   align-items: center;
   gap: 10px;
   padding: 14px 28px;
-  border-radius: 14px;
+  border-radius: 999px;
   border: 1.5px solid var(--t-border);
   background: var(--t-bg-card);
   color: var(--t-accent2);

@@ -42,8 +42,7 @@ const THEMES = [
       '--t-title-grad': 'linear-gradient(90deg,#111827 0%,#3b82f6 100%)',
       '--t-overlay': 'rgba(0,0,0,0.05)',
       '--t-overlay2': 'rgba(0,0,0,0.04)',
-      '--t-shadow': 'rgba(0,0,0,0.15)',
-      '--t-header-bg': 'rgba(245,247,250,0.92)'
+      '--t-shadow': 'rgba(0,0,0,0.15)'
     }
   },
   {
@@ -78,8 +77,7 @@ const THEMES = [
       '--t-audio-clr': '#00f2fe',
       '--t-title-grad': 'linear-gradient(90deg,#fff 0%,rgba(0,242,254,0.9) 100%)',
       '--t-overlay': 'rgba(255,255,255,0.05)',
-      '--t-overlay2': 'rgba(255,255,255,0.04)',
-      '--t-shadow': 'rgba(0,0,0,0.5)'
+      '--t-overlay2': 'rgba(255,255,255,0.04)'
     }
   },
   {

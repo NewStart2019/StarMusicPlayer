@@ -1,6 +1,7 @@
 <script setup>
-import {computed, ref} from 'vue'
+import {computed, onMounted, onUnmounted, ref} from 'vue'
 import SleepTimer from './SleepTimer.vue'
+import PlaylistPanel from './PlaylistPanel.vue'
 
 const props = defineProps({
   displayTitle: {type: String, required: true},
@@ -35,6 +36,15 @@ const mobileProgressRef = ref(null)
 const lyricsContainerRef = ref(null)
 const mobileLyricsRef = ref(null)
 const showPlaylist = ref(false)
+const isMobile = ref(false)
+const checkMobile = () => {
+  isMobile.value = window.innerWidth <= 600
+}
+onMounted(() => {
+  checkMobile();
+  window.addEventListener('resize', checkMobile)
+})
+onUnmounted(() => window.removeEventListener('resize', checkMobile))
 
 defineExpose({progressBarRef, mobileProgressRef, lyricsContainerRef, mobileLyricsRef})
 
@@ -406,36 +416,16 @@ const playModeLabel = computed(() => ({order: '顺序播放', shuffle: '随机�
         </Transition>
       </div>
 
-      <!-- ===== 桌面右侧播放列表面板 ===== -->
-      <Transition name="pl-slide">
-        <div v-if="showPlaylist" class="pl-sidebar desktop-only">
-          <div class="pl-sidebar-header">
-            <span class="pl-label">播放列表</span>
-            <span class="pl-count">{{ playlist.length }} 首</span>
-            <button class="pl-close-btn" @click="showPlaylist = false">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="18" y1="6" x2="6" y2="18"/>
-                <line x1="6" y1="6" x2="18" y2="18"/>
-              </svg>
-            </button>
-          </div>
-          <div class="pl-scroll">
-            <div v-if="playlist.length === 0" class="pl-empty">播放列表为空</div>
-            <div v-for="(song, i) in playlist" :key="song.name + i"
-                 class="pl-item" :class="{ 'pl-cur': i === currentIndex }"
-                 @click="emit('load-index', i)">
-              <span class="pl-num">{{ i + 1 }}</span>
-              <span class="pl-name">{{ song.name.replace(/\.[^.]+$/, '') }}</span>
-              <button class="pl-del" @click.stop="emit('remove-from-playlist', i)">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                  <line x1="18" y1="6" x2="6" y2="18"/>
-                  <line x1="6" y1="6" x2="18" y2="18"/>
-                </svg>
-              </button>
-            </div>
-          </div>
-        </div>
-      </Transition>
+      <!-- ===== 桌面右侧播放列表面板（absolute 叠层） ===== -->
+      <PlaylistPanel
+          :show="showPlaylist && !isMobile"
+          :playlist="playlist"
+          :current-index="currentIndex"
+          :teleport="false"
+          @close="showPlaylist = false"
+          @load-index="emit('load-index', $event)"
+          @remove-from-playlist="emit('remove-from-playlist', $event)"
+      />
 
     </div>
   </div>
@@ -919,170 +909,7 @@ const playModeLabel = computed(() => ({order: '顺序播放', shuffle: '随机�
   background: var(--t-text3);
 }
 
-/* PLAYLIST SIDEBAR (desktop right panel) */
-.pl-sidebar {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: min(340px, 100vw);
-  z-index: 50;
-  background: color-mix(in srgb, var(--t-bg) 94%, white);
-  border-left: 1px solid var(--t-border);
-  backdrop-filter: blur(20px);
-  display: flex;
-  flex-direction: column;
-  box-shadow: -20px 0 60px rgba(0, 0, 0, 0.4);
-}
-
-.pl-sidebar-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 18px 20px 14px;
-  border-bottom: 1px solid var(--t-border);
-  flex-shrink: 0;
-}
-
-.pl-label {
-  font-family: 'Orbitron', monospace;
-  font-size: 0.68rem;
-  letter-spacing: 3px;
-  color: var(--t-label-color);
-  flex: 1;
-}
-
-.pl-count {
-  font-size: 0.75rem;
-  color: var(--t-text3);
-}
-
-.pl-close-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--t-text3);
-  padding: 4px;
-  border-radius: 6px;
-  display: flex;
-  transition: color 0.2s;
-}
-
-.pl-close-btn svg {
-  width: 16px;
-  height: 16px;
-}
-
-.pl-close-btn:hover {
-  color: var(--t-text);
-  background: rgba(255, 255, 255, 0.08);
-}
-
-.pl-scroll {
-  overflow-y: auto;
-  flex: 1;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
-}
-
-.pl-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 11px 18px;
-  cursor: pointer;
-  transition: background 0.18s;
-}
-
-.pl-item:hover {
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.pl-cur {
-  background: color-mix(in srgb, var(--t-accent1) 10%, transparent) !important;
-}
-
-.pl-num {
-  font-size: 0.7rem;
-  color: var(--t-text3);
-  font-family: 'Orbitron', monospace;
-  min-width: 20px;
-  flex-shrink: 0;
-}
-
-.pl-cur .pl-num {
-  color: var(--t-accent1);
-}
-
-.pl-name {
-  flex: 1;
-  font-size: 0.85rem;
-  color: var(--t-text2);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
-}
-
-.pl-cur .pl-name {
-  color: var(--t-accent1);
-  font-weight: 600;
-}
-
-.pl-del {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--t-text3);
-  opacity: 0;
-  padding: 4px;
-  border-radius: 4px;
-  display: flex;
-  flex-shrink: 0;
-  transition: all 0.15s;
-}
-
-.pl-del svg {
-  width: 13px;
-  height: 13px;
-}
-
-.pl-item:hover .pl-del {
-  opacity: 1;
-}
-
-.pl-del:hover {
-  color: #ff5555;
-  background: rgba(255, 85, 85, 0.12);
-  opacity: 1;
-}
-
-.pl-empty {
-  padding: 28px;
-  text-align: center;
-  color: var(--t-text3);
-  font-size: 0.85rem;
-}
-
-/* 右侧滑入动画 */
-.pl-slide-enter-active {
-  animation: plSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.pl-slide-leave-active {
-  animation: plSlideIn 0.22s ease reverse;
-}
-
-@keyframes plSlideIn {
-  from {
-    opacity: 0;
-    transform: translateX(40px)
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0)
-  }
-}
+/* PLAYLIST: see PlaylistPanel.vue */
 
 /* RIGHT LYRICS */
 .player-right {
