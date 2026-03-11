@@ -1,5 +1,5 @@
 <script setup>
-import {onMounted, onUnmounted, ref, watch} from 'vue'
+import {onMounted, onUnmounted, ref} from 'vue'
 import SleepTimer from './SleepTimer.vue'
 import PlaylistPanel from './PlaylistPanel.vue'
 
@@ -16,7 +16,6 @@ const props = defineProps({
   sleepMinutes: {type: Number, default: 0},
   sleepEndTime: {type: Number, default: 0},
 })
-
 const emit = defineEmits([
   'open-player', 'toggle-play', 'prev', 'next',
   'toggle-fav', 'volume-change', 'cycle-play-mode',
@@ -33,34 +32,19 @@ onMounted(() => {
   checkMobile();
   window.addEventListener('resize', checkMobile)
 })
-const playlistRef = ref(null)
-
-// 倒计时显示（已移入 SleepTimer 组件）
-
-const onDocClick = (e) => {
-  if (playlistRef.value && !playlistRef.value.contains(e.target)) showPlaylist.value = false
-}
-watch(showPlaylist, (p) => {
-  if (p) document.addEventListener('click', onDocClick, true)
-  else document.removeEventListener('click', onDocClick, true)
-})
-onUnmounted(() => {
-  document.removeEventListener('click', onDocClick, true);
-  window.removeEventListener('resize', checkMobile)
-})
-
+onUnmounted(() => window.removeEventListener('resize', checkMobile))
 </script>
 
 <template>
   <div class="minibar">
-    <!-- 进度条（顶部细条） -->
+    <!-- 顶部进度细条 -->
     <div class="minibar-progress">
       <div class="minibar-fill" :style="{ width: progressPercent + '%' }"></div>
     </div>
 
     <div class="minibar-inner">
-      <!-- 专辑图 + 歌曲信息 -->
-      <div class="minibar-left" @click="emit('open-player')" title="打开播放页">
+      <!-- 左：专辑 + 信息 -->
+      <div class="minibar-left" @click="emit('open-player')">
         <div class="mini-disc" :class="{ spinning: isPlaying }">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
             <path d="M9 18V5l12-2v13"/>
@@ -74,36 +58,28 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <!-- 中间控制区 -->
+      <!-- 中：控制 -->
       <div class="minibar-center">
-        <!-- 收藏 -->
-        <button class="mb-btn mb-fav" :class="{ active: isFavorite }" @click="emit('toggle-fav')" title="收藏">
-          <svg viewBox="0 0 24 24" :fill="isFavorite ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="2">
+        <button class="mb-btn mb-fav" :class="{ active: isFavorite }" @click="emit('toggle-fav')">
+          <svg viewBox="0 0 24 24" :fill="isFavorite?'currentColor':'none'" stroke="currentColor" stroke-width="2">
             <path
                 d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
           </svg>
         </button>
-
-        <!-- 播放模式 -->
-        <button class="mb-btn mb-mode" @click="emit('cycle-play-mode')"
-                :title="{ order:'顺序播放', shuffle:'随机播放', repeat:'单曲循环' }[playMode]">
-          <!-- 顺序 -->
-          <svg v-if="playMode === 'order'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <button class="mb-btn mb-mode" @click="emit('cycle-play-mode')">
+          <svg v-if="playMode==='order'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="17 1 21 5 17 9"/>
             <path d="M3 11V9a4 4 0 0 1 4-4h14"/>
             <polyline points="7 23 3 19 7 15"/>
             <path d="M21 13v2a4 4 0 0 1-4 4H3"/>
           </svg>
-          <!-- 随机 -->
-          <svg v-else-if="playMode === 'shuffle'" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-               stroke-width="2">
+          <svg v-else-if="playMode==='shuffle'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="16 3 21 3 21 8"/>
             <line x1="4" y1="20" x2="21" y2="3"/>
             <polyline points="21 16 21 21 16 21"/>
             <line x1="15" y1="15" x2="21" y2="21"/>
             <line x1="4" y1="4" x2="9" y2="9"/>
           </svg>
-          <!-- 单曲循环 -->
           <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="17 1 21 5 17 9"/>
             <path d="M3 11V9a4 4 0 0 1 4-4h14"/>
@@ -112,16 +88,12 @@ onUnmounted(() => {
             <text x="9.5" y="14.5" font-size="6" fill="currentColor" stroke="none" font-weight="bold">1</text>
           </svg>
         </button>
-
-        <!-- 上一曲 -->
-        <button class="mb-btn mb-prev" @click="emit('prev')" title="上一曲">
+        <button class="mb-btn mb-prev" @click="emit('prev')">
           <svg viewBox="0 0 24 24" fill="currentColor">
             <polygon points="19,20 9,12 19,4"/>
             <line x1="5" y1="4" x2="5" y2="20" stroke="currentColor" stroke-width="2" fill="none"/>
           </svg>
         </button>
-
-        <!-- 播放/暂停（大按钮） -->
         <button class="mb-btn mb-play" @click="emit('toggle-play')">
           <svg v-if="isPlaying" viewBox="0 0 24 24" fill="currentColor">
             <rect x="6" y="4" width="4" height="16" rx="1"/>
@@ -131,9 +103,7 @@ onUnmounted(() => {
             <polygon points="5,3 19,12 5,21"/>
           </svg>
         </button>
-
-        <!-- 下一曲 -->
-        <button class="mb-btn mb-next" @click="emit('next')" title="下一曲">
+        <button class="mb-btn mb-next" @click="emit('next')">
           <svg viewBox="0 0 24 24" fill="currentColor">
             <polygon points="5,4 15,12 5,20"/>
             <line x1="19" y1="4" x2="19" y2="20" stroke="currentColor" stroke-width="2" fill="none"/>
@@ -141,9 +111,8 @@ onUnmounted(() => {
         </button>
       </div>
 
-      <!-- 右侧：音量 + 播放列表 -->
+      <!-- 右：音量 + 定时 + 列表 -->
       <div class="minibar-right">
-        <!-- 音量 -->
         <div class="mini-volume">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="vol-ico">
             <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
@@ -152,82 +121,54 @@ onUnmounted(() => {
           <input type="range" min="0" max="1" step="0.01" :value="volume" class="mini-vol-slider"
                  @input="emit('volume-change', $event)"/>
         </div>
-
-        <!-- 睡眠定时 -->
-        <SleepTimer
-            variant="minibar"
-            :sleep-minutes="sleepMinutes"
-            :sleep-end-time="sleepEndTime"
-            @set-sleep-timer="emit('set-sleep-timer', $event)"
-            @cancel-sleep-timer="emit('cancel-sleep-timer')"
-        />
-
-        <!-- 播放列表 -->
-        <div class="mini-pl-wrap" ref="playlistRef">
-          <button class="mb-btn mb-list" :class="{ active: showPlaylist }"
-                  @click.stop="showPlaylist = !showPlaylist" title="播放列表">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="8" y1="6" x2="21" y2="6"/>
-              <line x1="8" y1="12" x2="21" y2="12"/>
-              <line x1="8" y1="18" x2="21" y2="18"/>
-              <circle cx="3" cy="6" r="1.5" fill="currentColor" stroke="none"/>
-              <circle cx="3" cy="12" r="1.5" fill="currentColor" stroke="none"/>
-              <circle cx="3" cy="18" r="1.5" fill="currentColor" stroke="none"/>
-            </svg>
-            <span class="pl-badge" v-if="playlist.length">{{ playlist.length }}</span>
-          </button>
-
-          <!-- 桌面端：右侧固定侧栏 -->
-          <PlaylistPanel
-              :show="showPlaylist && !isMobile"
-              :playlist="playlist"
-              :current-index="currentIndex"
-              :teleport="true"
-              offset-bottom="68px"
-              @close="showPlaylist = false"
-              @load-index="emit('load-index', $event)"
-              @remove-from-playlist="emit('remove-from-playlist', $event)"
-          />
-        </div>
+        <SleepTimer variant="minibar" :sleep-minutes="sleepMinutes" :sleep-end-time="sleepEndTime"
+                    @set-sleep-timer="emit('set-sleep-timer', $event)"
+                    @cancel-sleep-timer="emit('cancel-sleep-timer')"/>
+        <button class="mb-btn mb-list" :class="{ active: showPlaylist }"
+                @click.stop="showPlaylist = !showPlaylist">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="8" y1="6" x2="21" y2="6"/>
+            <line x1="8" y1="12" x2="21" y2="12"/>
+            <line x1="8" y1="18" x2="21" y2="18"/>
+            <circle cx="3" cy="6" r="1.5" fill="currentColor" stroke="none"/>
+            <circle cx="3" cy="12" r="1.5" fill="currentColor" stroke="none"/>
+            <circle cx="3" cy="18" r="1.5" fill="currentColor" stroke="none"/>
+          </svg>
+          <span class="pl-badge" v-if="playlist.length">{{ playlist.length }}</span>
+        </button>
       </div>
     </div>
   </div>
 
-  <!-- 手机端全屏播放列表遮罩（挂在 minibar 同级，fixed 覆盖全屏） -->
-  <Transition name="sheet-up">
-    <div v-if="showPlaylist" class="mobile-pl-overlay" @click.self="showPlaylist = false">
-      <div class="mobile-pl-sheet">
-        <div class="mini-pl-header">
-          <span>播放列表</span>
-          <span class="mini-pl-count">{{ playlist.length }} 首</span>
-          <button class="pl-sheet-close" @click="showPlaylist = false">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="6" x2="6" y2="18"/>
-              <line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
-          </button>
-        </div>
-        <div class="mini-pl-scroll">
-          <div v-if="playlist.length === 0" class="mini-pl-empty">播放列表为空</div>
-          <div v-for="(song, i) in playlist" :key="song.name + i"
-               class="mini-pl-item" :class="{ 'pl-cur': i === currentIndex }"
-               @click="emit('load-index', i); showPlaylist = false">
-            <span class="mini-pl-num">{{ i + 1 }}</span>
-            <span class="mini-pl-name">{{ song.name.replace(/\.[^.]+$/, '') }}</span>
-            <button class="mini-pl-del" @click.stop="emit('remove-from-playlist', i)">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                <line x1="18" y1="6" x2="6" y2="18"/>
-                <line x1="6" y1="6" x2="18" y2="18"/>
-              </svg>
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  </Transition>
+  <!-- PC端：右侧固定侧栏 -->
+  <PlaylistPanel
+      v-if="!isMobile"
+      :show="showPlaylist"
+      :playlist="playlist"
+      :current-index="currentIndex"
+      mode="side"
+      :use-fixed="true"
+      offset-bottom="68px"
+      @close="showPlaylist = false"
+      @load-index="emit('load-index', $event)"
+      @remove-from-playlist="emit('remove-from-playlist', $event)"
+  />
+
+  <!-- 手机端：底部弹出 -->
+  <PlaylistPanel
+      v-if="isMobile"
+      :show="showPlaylist"
+      :playlist="playlist"
+      :current-index="currentIndex"
+      mode="sheet"
+      @close="showPlaylist = false"
+      @load-index="emit('load-index', $event)"
+      @remove-from-playlist="emit('remove-from-playlist', $event)"
+  />
 </template>
 
 <style scoped>
+/* ── 主体 ───────────────────────────────────── */
 .minibar {
   position: fixed;
   bottom: 0;
@@ -240,7 +181,6 @@ onUnmounted(() => {
   box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.18);
 }
 
-/* 顶部进度细条 */
 .minibar-progress {
   height: 2px;
   background: var(--t-overlay);
@@ -264,7 +204,7 @@ onUnmounted(() => {
   gap: 0;
 }
 
-/* 左侧：专辑 + 信息 */
+/* ── 左侧 ───────────────────────────────────── */
 .minibar-left {
   display: flex;
   align-items: center;
@@ -279,24 +219,19 @@ onUnmounted(() => {
   width: 42px;
   height: 42px;
   border-radius: 50%;
+  flex-shrink: 0;
   background: var(--t-disc-bg);
-  border: 2px solid var(--t-disc-border);
+  border: 1px solid var(--t-disc-border);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--t-audio-clr);
-  flex-shrink: 0;
-  box-shadow: 0 0 14px var(--t-disc-glow);
-  transition: box-shadow 0.3s;
-}
-
-.mini-disc svg {
-  width: 18px;
-  height: 18px;
+  color: var(--t-text3);
+  transition: box-shadow 0.4s;
 }
 
 .mini-disc.spinning {
-  animation: discSpin 4s linear infinite;
+  animation: discSpin 6s linear infinite;
+  box-shadow: 0 0 14px var(--t-disc-glow);
 }
 
 @keyframes discSpin {
@@ -305,29 +240,26 @@ onUnmounted(() => {
   }
 }
 
-.minibar-left:hover .mini-disc {
-  box-shadow: 0 0 22px var(--t-disc-glow);
+.mini-disc svg {
+  width: 18px;
+  height: 18px;
 }
 
 .mini-info {
-  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
+  min-width: 0;
 }
 
 .mini-title {
-  font-size: 0.87rem;
+  font-size: 0.88rem;
   font-weight: 600;
   color: var(--t-text);
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
-  transition: color 0.2s;
-}
-
-.minibar-left:hover .mini-title {
-  color: var(--t-accent1);
+  max-width: 180px;
 }
 
 .mini-artist {
@@ -336,74 +268,54 @@ onUnmounted(() => {
   letter-spacing: 1px;
 }
 
-/* 中间控制 */
+/* ── 中间控制 ───────────────────────────────── */
 .minibar-center {
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 8px;
 }
 
 .mb-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
   background: none;
   border: none;
   cursor: pointer;
   color: var(--t-text2);
   border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   transition: all 0.2s;
+  width: 34px;
+  height: 34px;
 }
 
 .mb-btn svg {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
 }
 
 .mb-btn:hover {
   color: var(--t-text);
+  background: var(--t-overlay);
   transform: scale(1.1);
 }
 
-.mb-fav {
-  padding: 6px;
+.mb-btn.active {
+  color: var(--t-accent1);
 }
 
 .mb-fav.active {
-  color: #f953c6;
-}
-
-.mb-fav.active:hover {
-  color: #f953c6;
-}
-
-.mb-mode {
-  padding: 6px;
-}
-
-.mb-mode:hover {
-  color: var(--t-accent2);
-}
-
-.mb-prev, .mb-next {
-  padding: 7px;
-}
-
-.mb-prev:hover, .mb-next:hover {
-  color: var(--t-accent1);
+  color: var(--t-accent3);
 }
 
 .mb-play {
   width: 44px;
   height: 44px;
-  background: var(--t-play-bg);
-  color: white;
-  border-radius: 50%;
-  box-shadow: 0 4px 16px color-mix(in srgb, var(--t-accent1) 35%, transparent);
-  transition: all 0.2s;
-  flex-shrink: 0;
+  background: var(--t-play-bg) !important;
+  color: #fff !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
 }
 
 .mb-play svg {
@@ -416,7 +328,33 @@ onUnmounted(() => {
   box-shadow: 0 6px 20px color-mix(in srgb, var(--t-accent1) 50%, transparent);
 }
 
-/* 右侧：音量 + 播放列表 */
+.mb-list {
+  position: relative;
+}
+
+.mb-list.active {
+  color: var(--t-accent1);
+}
+
+.pl-badge {
+  position: absolute;
+  top: 0;
+  right: 0;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 8px;
+  background: var(--t-accent1);
+  color: white;
+  font-size: 0.6rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 3px;
+  pointer-events: none;
+}
+
+/* ── 右侧 ───────────────────────────────────── */
 .minibar-right {
   display: flex;
   align-items: center;
@@ -459,45 +397,7 @@ onUnmounted(() => {
   box-shadow: 0 0 6px var(--t-disc-glow);
 }
 
-/* 播放列表 */
-.mini-pl-wrap {
-  position: relative;
-}
-
-.mb-list {
-  padding: 7px;
-  position: relative;
-}
-
-.mb-list.active {
-  color: var(--t-accent1);
-}
-
-.mb-list:hover {
-  color: var(--t-accent1);
-}
-
-.pl-badge {
-  position: absolute;
-  top: 0;
-  right: 0;
-  min-width: 16px;
-  height: 16px;
-  border-radius: 8px;
-  background: var(--t-accent1);
-  color: white;
-  font-size: 0.6rem;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 3px;
-  pointer-events: none;
-}
-
-/* desktop playlist: see PlaylistPanel.vue */
-
-/* 响应式：小屏收起音量和播放模式 */
+/* ── 响应式 ─────────────────────────────────── */
 @media (max-width: 640px) {
   .minibar-left {
     width: auto;
@@ -518,75 +418,6 @@ onUnmounted(() => {
 
   .mb-fav {
     display: none;
-  }
-}
-
-/* 手机端播放列表全屏遮罩（默认隐藏，仅手机可见） */
-.mobile-pl-overlay {
-  display: none;
-  position: fixed;
-  inset: 0;
-  z-index: 200;
-  background: rgba(0, 0, 0, 0.52);
-  backdrop-filter: blur(6px);
-  align-items: flex-end;
-}
-
-.mobile-pl-sheet {
-  width: 100%;
-  max-height: 72vh;
-  background: color-mix(in srgb, var(--t-bg) 96%, white);
-  border-top: 1px solid var(--t-border);
-  border-radius: 20px 20px 0 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  padding-bottom: 68px; /* 让内容不被 minibar 遮住 */
-  box-sizing: border-box;
-}
-
-.pl-sheet-close {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--t-text3);
-  padding: 3px;
-  border-radius: 5px;
-  display: flex;
-  transition: color 0.2s;
-}
-
-.pl-sheet-close svg {
-  width: 15px;
-  height: 15px;
-}
-
-.pl-sheet-close:hover {
-  color: var(--t-text);
-}
-
-@media (max-width: 640px) {
-  .mobile-pl-overlay {
-    display: flex;
-  }
-}
-
-.sheet-up-enter-active {
-  animation: sheetUp 0.28s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.sheet-up-leave-active {
-  animation: sheetUp 0.2s ease reverse;
-}
-
-@keyframes sheetUp {
-  from {
-    opacity: 0;
-    transform: translateY(100%)
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0)
   }
 }
 </style>

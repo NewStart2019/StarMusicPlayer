@@ -1,42 +1,76 @@
 <script setup>
 /**
- * PlaylistPanel —— 通用播放列表侧栏组件
+ * PlaylistPanel — 通用播放列表组件
  *
  * Props:
- *   show          Boolean  是否显示
- *   playlist      Array    歌曲列表 [{name, url, ...}]
- *   currentIndex  Number   当前播放索引
- *   teleport      Boolean  是否 Teleport 到 body（MiniBar 场景用 true）
- *   offsetBottom  String   teleport 模式下距底部偏移，默认 '68px'（MiniBar 高度）
+ *   show         Boolean  是否显示
+ *   playlist     Array    歌曲列表
+ *   currentIndex Number   当前播放索引
+ *   mode         String   'side'  = PC右侧固定侧栏（absolute/fixed）
+ *                         'sheet' = 手机底部弹出（Teleport to body）
+ *   offsetBottom String   side 模式 fixed 时距底部高度，默认 '0px'
+ *   useFixed     Boolean  side 模式下使用 position:fixed（MiniBar场景）
  *
  * Emits:
- *   close                    关闭面板
- *   load-index(i)            点击歌曲
- *   remove-from-playlist(i)  删除歌曲
+ *   close
+ *   load-index(i)
+ *   remove-from-playlist(i)
  */
-import {Teleport} from 'vue'
-
 const props = defineProps({
   show: {type: Boolean, required: true},
   playlist: {type: Array, required: true},
   currentIndex: {type: Number, required: true},
-  teleport: {type: Boolean, default: false},
-  offsetBottom: {type: String, default: '68px'},
+  mode: {type: String, default: 'side'},   // 'side' | 'sheet'
+  offsetBottom: {type: String, default: '0px'},
+  useFixed: {type: Boolean, default: false},
 })
 const emit = defineEmits(['close', 'load-index', 'remove-from-playlist'])
 </script>
 
 <template>
-  <!-- teleport 模式：fixed 挂到 body，用于 MiniBar 场景 -->
-  <Teleport to="body" :disabled="!teleport">
+  <!-- ══ SHEET 模式：手机底部弹出 ══ -->
+  <Teleport to="body" v-if="mode === 'sheet'">
+    <Transition name="sheet-up">
+      <div v-if="show" class="pl-sheet-overlay" @click.self="emit('close')">
+        <div class="pl-sheet-panel">
+          <div class="pl-sheet-handle"></div>
+          <div class="pl-panel-header">
+            <span class="pl-panel-title">播放列表</span>
+            <span class="pl-panel-count">{{ playlist.length }} 首</span>
+            <button class="pl-panel-close" @click="emit('close')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"/>
+                <line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
+          <div class="pl-panel-scroll">
+            <div v-if="playlist.length === 0" class="pl-panel-empty">播放列表为空</div>
+            <div v-for="(song, i) in playlist" :key="song.name + i"
+                 class="pl-panel-item" :class="{ 'pl-panel-cur': i === currentIndex }"
+                 @click="emit('load-index', i); emit('close')">
+              <span class="pl-panel-num">{{ i + 1 }}</span>
+              <span class="pl-panel-name">{{ song.name.replace(/\.[^.]+$/, '') }}</span>
+              <button class="pl-panel-del" @click.stop="emit('remove-from-playlist', i)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <line x1="18" y1="6" x2="6" y2="18"/>
+                  <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Transition>
+  </Teleport>
+
+  <!-- ══ SIDE 模式：PC右侧滑入 ══ -->
+  <Teleport to="body" v-else>
     <Transition name="pl-panel-slide">
-      <div
-          v-if="show"
-          class="pl-panel-root"
-          :class="teleport ? 'pl-panel--fixed' : 'pl-panel--absolute'"
-          :style="teleport ? { bottom: offsetBottom } : {}"
-      >
-        <!-- 头部 -->
+      <div v-if="show"
+           class="pl-side-panel"
+           :style="useFixed ? { position:'fixed', top:0, right:0, bottom: offsetBottom } : {}"
+           :class="{ 'pl-side-absolute': !useFixed, 'pl-side-fixed': useFixed }">
         <div class="pl-panel-header">
           <span class="pl-panel-title">播放列表</span>
           <span class="pl-panel-count">{{ playlist.length }} 首</span>
@@ -47,16 +81,11 @@ const emit = defineEmits(['close', 'load-index', 'remove-from-playlist'])
             </svg>
           </button>
         </div>
-
-        <!-- 列表 -->
         <div class="pl-panel-scroll">
           <div v-if="playlist.length === 0" class="pl-panel-empty">播放列表为空</div>
-          <div
-              v-for="(song, i) in playlist" :key="song.name + i"
-              class="pl-panel-item"
-              :class="{ 'pl-panel-cur': i === currentIndex }"
-              @click="emit('load-index', i); emit('close')"
-          >
+          <div v-for="(song, i) in playlist" :key="song.name + i"
+               class="pl-panel-item" :class="{ 'pl-panel-cur': i === currentIndex }"
+               @click="emit('load-index', i); emit('close')">
             <span class="pl-panel-num">{{ i + 1 }}</span>
             <span class="pl-panel-name">{{ song.name.replace(/\.[^.]+$/, '') }}</span>
             <button class="pl-panel-del" @click.stop="emit('remove-from-playlist', i)">
@@ -73,34 +102,7 @@ const emit = defineEmits(['close', 'load-index', 'remove-from-playlist'])
 </template>
 
 <style scoped>
-/* ── 共用基础样式 ─────────────────────────────── */
-.pl-panel-root {
-  z-index: 200;
-  background: color-mix(in srgb, var(--t-bg) 94%, white);
-  border-left: 1px solid var(--t-border);
-  backdrop-filter: blur(20px);
-  display: flex;
-  flex-direction: column;
-  box-shadow: -20px 0 60px rgba(0, 0, 0, 0.4);
-  width: min(340px, 100vw);
-}
-
-/* absolute 模式：叠在 player-inner 右侧，充满父容器高度 */
-.pl-panel--absolute {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-}
-
-/* fixed 模式：固定在屏幕右侧（MiniBar 场景），bottom 由外部传入 */
-.pl-panel--fixed {
-  position: fixed;
-  top: 0;
-  right: 0;
-}
-
-/* ── 头部 ─────────────────────────────────────── */
+/* ── 共用列表样式 ───────────────────────────── */
 .pl-panel-header {
   display: flex;
   align-items: center;
@@ -144,7 +146,6 @@ const emit = defineEmits(['close', 'load-index', 'remove-from-playlist'])
   background: rgba(255, 255, 255, 0.08);
 }
 
-/* ── 列表滚动区 ───────────────────────────────── */
 .pl-panel-scroll {
   overflow-y: auto;
   flex: 1;
@@ -231,7 +232,84 @@ const emit = defineEmits(['close', 'load-index', 'remove-from-playlist'])
   font-size: 0.85rem;
 }
 
-/* ── 滑入动画 ─────────────────────────────────── */
+/* ── SHEET 模式（手机底部）───────────────────── */
+.pl-sheet-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: flex-end;
+}
+
+.pl-sheet-panel {
+  width: 100%;
+  max-height: 75vh;
+  background: color-mix(in srgb, var(--t-bg) 96%, white);
+  border-top: 1px solid var(--t-border);
+  border-radius: 22px 22px 0 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.pl-sheet-handle {
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--t-border);
+  margin: 10px auto 2px;
+  flex-shrink: 0;
+}
+
+.sheet-up-enter-active {
+  animation: sheetUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.sheet-up-leave-active {
+  animation: sheetUp 0.22s ease reverse;
+}
+
+@keyframes sheetUp {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ── SIDE 模式（PC右侧）────────────────────── */
+.pl-side-panel {
+  z-index: 200;
+  background: color-mix(in srgb, var(--t-bg) 94%, white);
+  border-left: 1px solid var(--t-border);
+  backdrop-filter: blur(20px);
+  display: flex;
+  flex-direction: column;
+  box-shadow: -20px 0 60px rgba(0, 0, 0, 0.4);
+  width: min(340px, 100vw);
+}
+
+.pl-side-absolute {
+  /* absolute 模式由 PlayerView 自身 position:relative 容器决定位置 */
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+}
+
+.pl-side-fixed {
+  position: fixed;
+  top: 0;
+  right: 0;
+  /* bottom 由 inline style 控制 */
+}
+
 .pl-panel-slide-enter-active {
   animation: plSlide 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }

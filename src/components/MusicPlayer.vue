@@ -885,7 +885,7 @@ const startAlbumRotation = () => {
   lastTimestamp = null
   const animate = (ts) => {
     if (!lastTimestamp) lastTimestamp = ts
-    albumRotation.value = (albumRotation.value + (ts - lastTimestamp) * 0.018) % 360
+    albumRotation.value = (albumRotation.value + (ts - lastTimestamp) * 0.058) % 360
     lastTimestamp = ts
     rotationRafId = requestAnimationFrame(animate)
   }

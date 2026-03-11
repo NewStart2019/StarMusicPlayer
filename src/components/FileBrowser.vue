@@ -23,6 +23,10 @@ const emit = defineEmits([
   'show-favorites', 'search-all', 'clear-search',
 ])
 
+const isMobile = ref(false)
+const checkMobile = () => {
+  isMobile.value = window.innerWidth <= 640
+}
 /* ── 本地 UI 状态 ─────────────────────────── */
 const searchQuery = ref('')
 const showThemePicker = ref(false)
@@ -97,7 +101,7 @@ const handleDisconnect = () => {
 
     <!-- ===== Header ===== -->
     <header class="header">
-      <div class="logo-area">
+      <div class="logo-area" v-if="isMobile || !showServerPanel">
         <div class="logo-icon">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
             <path d="M9 19V6l12-3v13"/>

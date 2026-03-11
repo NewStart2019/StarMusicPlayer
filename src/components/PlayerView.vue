@@ -1,5 +1,5 @@
 <script setup>
-import {computed, onMounted, onUnmounted, ref, watch} from 'vue'
+import {computed, onMounted, ref} from 'vue'
 import SleepTimer from './SleepTimer.vue'
 import PlaylistPanel from './PlaylistPanel.vue'
 
@@ -40,8 +40,6 @@ defineExpose({progressBarRef, mobileProgressRef, lyricsContainerRef, mobileLyric
 /* ── UI state ────────────────────────────────── */
 const showPlaylist = ref(false)
 const showLyrics = ref(false)   // 手机歌词抽屉
-const showVolumePopup = ref(false)   // 手机音量弹窗
-const volumeWrapRef = ref(null)
 
 /* ── 移动端检测 ──────────────────────────────── */
 const isMobile = ref(false)
@@ -53,20 +51,6 @@ onMounted(() => {
   window.addEventListener('resize', checkMobile)
 })
 
-/* ── 音量弹窗：点外部关闭 ────────────────────── */
-const closeVolume = (e) => {
-  if (volumeWrapRef.value && !volumeWrapRef.value.contains(e.target))
-    showVolumePopup.value = false
-}
-watch(showVolumePopup, v => {
-  if (v) document.addEventListener('click', closeVolume, true)
-  else document.removeEventListener('click', closeVolume, true)
-})
-onUnmounted(() => {
-  window.removeEventListener('resize', checkMobile)
-  document.removeEventListener('click', closeVolume, true)
-})
-
 /* ── helpers ─────────────────────────────────── */
 const fmt = (s) => {
   if (isNaN(s) || s < 0) return '00:00'
@@ -75,8 +59,6 @@ const fmt = (s) => {
 const dotStart = (i) => Math.max(0, props.currentIndex - 3) + i
 const playModeLabel = computed(() =>
     ({order: '顺序播放', shuffle: '随机播放', repeat: '单曲循环'})[props.playMode])
-const volumePct = computed(() => Math.round(props.volume * 100))
-const volIcon = computed(() => props.volume === 0 ? 'mute' : props.volume < 0.5 ? 'low' : 'high')
 </script>
 
 <template>
@@ -312,7 +294,7 @@ const volIcon = computed(() => props.volume === 0 ? 'mute' : props.volume < 0.5 
           </div>
         </div>
 
-        <!-- 主控制行 -->
+        <!-- 主控制行：上一首 | 播放/暂停 | 下一首 -->
         <div class="m-controls-row">
           <button class="ctrl-btn m-prev" @click="emit('prev')">
             <svg viewBox="0 0 24 24" fill="currentColor">
@@ -320,58 +302,15 @@ const volIcon = computed(() => props.volume === 0 ? 'mute' : props.volume < 0.5 
               <line x1="5" y1="4" x2="5" y2="20" stroke="currentColor" stroke-width="2" fill="none"/>
             </svg>
           </button>
-
-          <!-- 播放按钮 + 音量弹窗触发 -->
-          <div class="m-play-hub" ref="volumeWrapRef">
-            <button class="ctrl-btn ctrl-play m-play-btn" @click="emit('toggle-play')">
-              <svg v-if="isPlaying" viewBox="0 0 24 24" fill="currentColor">
-                <rect x="6" y="4" width="4" height="16" rx="1"/>
-                <rect x="14" y="4" width="4" height="16" rx="1"/>
-              </svg>
-              <svg v-else viewBox="0 0 24 24" fill="currentColor">
-                <polygon points="5,3 19,12 5,21"/>
-              </svg>
-            </button>
-            <!-- 音量角标按钮 -->
-            <button class="m-vol-badge" @click.stop="showVolumePopup=!showVolumePopup" :title="`音量 ${volumePct}%`">
-              <svg v-if="volIcon==='mute'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
-                <line x1="23" y1="9" x2="17" y2="15"/>
-                <line x1="17" y1="9" x2="23" y2="15"/>
-              </svg>
-              <svg v-else-if="volIcon==='low'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
-                <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
-              </svg>
-              <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
-                <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
-                <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
-              </svg>
-            </button>
-            <!-- 音量弹窗 -->
-            <Transition name="vol-pop">
-              <div v-if="showVolumePopup" class="m-vol-popup" @click.stop>
-                <div class="m-vol-head">
-                  <span class="m-vol-label">音量</span>
-                  <span class="m-vol-pct">{{ volumePct }}%</span>
-                </div>
-                <div class="m-vol-track">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="m-vol-ico">
-                    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
-                  </svg>
-                  <input type="range" min="0" max="1" step="0.01" :value="volume" class="volume-slider m-vol-slider"
-                         @input="emit('volume-change',$event)"/>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="m-vol-ico">
-                    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
-                    <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
-                    <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
-                  </svg>
-                </div>
-              </div>
-            </Transition>
-          </div>
-
+          <button class="ctrl-btn ctrl-play m-play-btn" @click="emit('toggle-play')">
+            <svg v-if="isPlaying" viewBox="0 0 24 24" fill="currentColor">
+              <rect x="6" y="4" width="4" height="16" rx="1"/>
+              <rect x="14" y="4" width="4" height="16" rx="1"/>
+            </svg>
+            <svg v-else viewBox="0 0 24 24" fill="currentColor">
+              <polygon points="5,3 19,12 5,21"/>
+            </svg>
+          </button>
           <button class="ctrl-btn m-next" @click="emit('next')">
             <svg viewBox="0 0 24 24" fill="currentColor">
               <polygon points="5,4 15,12 5,20"/>
@@ -380,7 +319,7 @@ const volIcon = computed(() => props.volume === 0 ? 'mute' : props.volume < 0.5 
           </button>
         </div>
 
-        <!-- 工具栏 -->
+        <!-- 工具栏：歌词 | 音量 | 定时 | 列表 -->
         <div class="m-toolbar">
           <button class="m-tool" :class="{ active:showLyrics }" @click.stop="showLyrics=!showLyrics">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -390,6 +329,19 @@ const volIcon = computed(() => props.volume === 0 ? 'mute' : props.volume < 0.5 
             </svg>
             <span>歌词</span>
           </button>
+          <!-- 音量：图标 + 滑块（紧凑横向布局） -->
+          <div class="m-vol-bar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="m-vol-ico">
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+              <path v-if="volume>0.5" d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
+              <path v-if="volume>0" d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+              <line v-if="volume===0" x1="23" y1="9" x2="17" y2="15"/>
+              <line v-if="volume===0" x1="17" y1="9" x2="23" y2="15"/>
+            </svg>
+            <input type="range" min="0" max="1" step="0.01" :value="volume"
+                   class="volume-slider m-vol-slider-inline"
+                   @input="emit('volume-change',$event)"/>
+          </div>
           <SleepTimer variant="player" :sleep-minutes="sleepMinutes" :sleep-end-time="sleepEndTime"
                       @set-sleep-timer="emit('set-sleep-timer',$event)"
                       @cancel-sleep-timer="emit('cancel-sleep-timer')"/>
@@ -444,18 +396,22 @@ const volIcon = computed(() => props.volume === 0 ? 'mute' : props.volume < 0.5 
 
       </div><!-- /mobile-player -->
 
-      <!-- 桌面播放列表侧栏 -->
+      <!-- 桌面播放列表：右侧侧栏 -->
       <PlaylistPanel
-          :show="showPlaylist && !isMobile"
-          :playlist="playlist" :current-index="currentIndex" :teleport="false"
+          v-if="!isMobile"
+          :show="showPlaylist"
+          :playlist="playlist" :current-index="currentIndex"
+          mode="side" :use-fixed="false"
           @close="showPlaylist=false"
           @load-index="emit('load-index',$event)"
           @remove-from-playlist="emit('remove-from-playlist',$event)"
       />
-      <!-- 手机播放列表（Teleport to body） -->
+      <!-- 手机播放列表：底部弹出 -->
       <PlaylistPanel
-          :show="showPlaylist && isMobile"
-          :playlist="playlist" :current-index="currentIndex" :teleport="true" offset-bottom="0px"
+          v-if="isMobile"
+          :show="showPlaylist"
+          :playlist="playlist" :current-index="currentIndex"
+          mode="sheet"
           @close="showPlaylist=false"
           @load-index="emit('load-index',$event)"
           @remove-from-playlist="emit('remove-from-playlist',$event)"
@@ -1192,7 +1148,7 @@ const volIcon = computed(() => props.volume === 0 ? 'mute' : props.volume < 0.5 
     align-items: center;
     justify-content: space-between;
     flex-shrink: 0;
-    padding: 6px 10px 4px;
+    padding: 8px 16px 4px;
   }
 
   .m-prev, .m-next {
@@ -1205,14 +1161,6 @@ const volIcon = computed(() => props.volume === 0 ? 'mute' : props.volume < 0.5 
     height: 26px
   }
 
-  /* 播放 + 音量 hub */
-  .m-play-hub {
-    position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center
-  }
-
   .m-play-btn {
     width: 72px !important;
     height: 72px !important
@@ -1223,116 +1171,14 @@ const volIcon = computed(() => props.volume === 0 ? 'mute' : props.volume < 0.5 
     height: 30px !important
   }
 
-  /* 音量角标 */
-  .m-vol-badge {
-    position: absolute;
-    bottom: -2px;
-    right: -18px;
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
-    background: var(--t-bg-card);
-    border: 1px solid var(--t-border);
-    color: var(--t-text3);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: all .2s;
-    z-index: 2;
-  }
-
-  .m-vol-badge svg {
-    width: 12px;
-    height: 12px
-  }
-
-  .m-vol-badge:hover {
-    color: var(--t-accent1);
-    border-color: var(--t-accent1)
-  }
-
-  /* 音量弹窗 */
-  .m-vol-popup {
-    position: absolute;
-    bottom: calc(100% + 14px);
-    left: 50%;
-    transform: translateX(-50%);
-    width: 230px;
-    background: color-mix(in srgb, var(--t-bg) 92%, white);
-    border: 1px solid var(--t-border);
-    border-radius: 16px;
-    box-shadow: 0 -10px 40px rgba(0, 0, 0, .45);
-    backdrop-filter: blur(20px);
-    padding: 14px 16px 16px;
-    z-index: 50;
-  }
-
-  .m-vol-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 12px
-  }
-
-  .m-vol-label {
-    font-family: 'Orbitron', monospace;
-    font-size: .58rem;
-    letter-spacing: 2px;
-    color: var(--t-label-color)
-  }
-
-  .m-vol-pct {
-    font-family: 'Orbitron', monospace;
-    font-size: .95rem;
-    font-weight: 700;
-    color: var(--t-accent1)
-  }
-
-  .m-vol-track {
-    display: flex;
-    align-items: center;
-    gap: 8px
-  }
-
-  .m-vol-ico {
-    width: 14px;
-    height: 14px;
-    color: var(--t-text3);
-    flex-shrink: 0
-  }
-
-  .m-vol-slider {
-    flex: 1
-  }
-
-  .vol-pop-enter-active {
-    animation: volPopIn .18s cubic-bezier(.16, 1, .3, 1)
-  }
-
-  .vol-pop-leave-active {
-    animation: volPopIn .13s ease reverse
-  }
-
-  @keyframes volPopIn {
-    from {
-      opacity: 0;
-      transform: translateX(-50%) translateY(8px) scale(.94)
-    }
-    to {
-      opacity: 1;
-      transform: translateX(-50%) translateY(0) scale(1)
-    }
-  }
-
-  /* 工具栏 */
+  /* 工具栏：歌词 | 音量 | 定时 | 列表 */
   .m-toolbar {
     display: flex;
     align-items: center;
-    justify-content: space-around;
     flex-shrink: 0;
     padding: 8px 0 6px;
     border-top: 1px solid var(--t-border);
+    gap: 0;
   }
 
   .m-tool {
@@ -1347,9 +1193,10 @@ const volIcon = computed(() => props.volume === 0 ? 'mute' : props.volume < 0.5 
     font-size: .58rem;
     font-family: inherit;
     letter-spacing: 1px;
-    padding: 6px 14px;
+    padding: 6px 10px;
     border-radius: 8px;
     transition: all .2s;
+    flex-shrink: 0;
   }
 
   .m-tool svg {
@@ -1359,6 +1206,44 @@ const volIcon = computed(() => props.volume === 0 ? 'mute' : props.volume < 0.5 
 
   .m-tool:hover, .m-tool.active {
     color: var(--t-accent1)
+  }
+
+  /* 音量滑块（工具栏内） */
+  .m-vol-bar {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 6px;
+  }
+
+  .m-vol-ico {
+    width: 15px;
+    height: 15px;
+    color: var(--t-text3);
+    flex-shrink: 0
+  }
+
+  .m-vol-slider-inline {
+    flex: 1;
+    min-width: 0;
+    -webkit-appearance: none;
+    height: 3px;
+    border-radius: 999px;
+    background: var(--t-border);
+    outline: none;
+    cursor: pointer;
+  }
+
+  .m-vol-slider-inline::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--t-accent1);
+    cursor: pointer;
+    box-shadow: 0 0 6px var(--t-disc-glow);
   }
 
   /* 歌词抽屉 */
