@@ -1,5 +1,6 @@
 <script setup>
 import {onUnmounted, ref, watch} from 'vue'
+import SleepTimer from './SleepTimer.vue'
 
 const props = defineProps({
   displayTitle: {type: String, required: true},
@@ -23,44 +24,19 @@ const emit = defineEmits([
 ])
 
 const showPlaylist = ref(false)
-const showSleepMenu = ref(false)
 const playlistRef = ref(null)
-const sleepRef = ref(null)
 
-// 倒计时显示
-const sleepCountdown = ref('')
-let countdownTimer = null
-const updateCountdown = () => {
-  if (!props.sleepEndTime) {
-    sleepCountdown.value = '';
-    return
-  }
-  const diff = Math.max(0, props.sleepEndTime - Date.now())
-  const m = Math.floor(diff / 60000)
-  const s = Math.floor((diff % 60000) / 1000)
-  sleepCountdown.value = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-}
-watch(() => props.sleepEndTime, (v) => {
-  if (countdownTimer) clearInterval(countdownTimer)
-  if (v) {
-    updateCountdown();
-    countdownTimer = setInterval(updateCountdown, 1000)
-  } else sleepCountdown.value = ''
-}, {immediate: true})
-onUnmounted(() => {
-  if (countdownTimer) clearInterval(countdownTimer)
-})
+// 倒计时显示（已移入 SleepTimer 组件）
 
 const onDocClick = (e) => {
   if (playlistRef.value && !playlistRef.value.contains(e.target)) showPlaylist.value = false
-  if (sleepRef.value && !sleepRef.value.contains(e.target)) showSleepMenu.value = false
 }
-watch([showPlaylist, showSleepMenu], ([p, s]) => {
-  if (p || s) document.addEventListener('click', onDocClick, true)
+watch(showPlaylist, (p) => {
+  if (p) document.addEventListener('click', onDocClick, true)
   else document.removeEventListener('click', onDocClick, true)
 })
+onUnmounted(() => document.removeEventListener('click', onDocClick, true))
 
-const sleepOptions = [15, 30, 45, 60, 90]
 </script>
 
 <template>
@@ -166,43 +142,13 @@ const sleepOptions = [15, 30, 45, 60, 90]
         </div>
 
         <!-- 睡眠定时 -->
-        <div class="mini-sleep-wrap" ref="sleepRef">
-          <button class="mb-btn mb-sleep" :class="{ active: sleepMinutes > 0 }"
-                  @click.stop="showSleepMenu = !showSleepMenu; showPlaylist = false"
-                  :title="sleepMinutes > 0 ? `定时停止：${sleepCountdown}` : '定时停止'">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="10"/>
-              <polyline points="12 6 12 12 16 14"/>
-            </svg>
-            <span v-if="sleepMinutes > 0" class="mb-sleep-badge">{{ sleepCountdown }}</span>
-          </button>
-          <Transition name="pl-up">
-            <div v-if="showSleepMenu" class="mini-sleep-panel">
-              <div class="mini-sleep-header">
-                <span>定时停止播放</span>
-                <button v-if="sleepMinutes > 0" class="mini-sleep-cancel"
-                        @click="emit('cancel-sleep-timer'); showSleepMenu = false">取消
-                </button>
-              </div>
-              <div v-if="sleepMinutes > 0" class="mini-sleep-active">
-                <span class="mini-sleep-cd">{{ sleepCountdown }}</span>
-                <span class="mini-sleep-hint">后停止播放</span>
-              </div>
-              <div class="mini-sleep-opts">
-                <button v-for="min in sleepOptions" :key="min"
-                        class="mini-sleep-opt" :class="{ active: sleepMinutes === min }"
-                        @click="emit('set-sleep-timer', min); showSleepMenu = false">
-                  {{ min }}分钟
-                </button>
-                <button class="mini-sleep-opt mini-sleep-opt-end"
-                        :class="{ active: sleepMinutes === -1 }"
-                        @click="emit('set-sleep-timer', -1); showSleepMenu = false">
-                  本曲结束后
-                </button>
-              </div>
-            </div>
-          </Transition>
-        </div>
+        <SleepTimer
+            variant="minibar"
+            :sleep-minutes="sleepMinutes"
+            :sleep-end-time="sleepEndTime"
+            @set-sleep-timer="emit('set-sleep-timer', $event)"
+            @cancel-sleep-timer="emit('cancel-sleep-timer')"
+        />
 
         <!-- 播放列表 -->
         <div class="mini-pl-wrap" ref="playlistRef">
@@ -219,11 +165,18 @@ const sleepOptions = [15, 30, 45, 60, 90]
             <span class="pl-badge" v-if="playlist.length">{{ playlist.length }}</span>
           </button>
 
+          <!-- 桌面端浮窗 -->
           <Transition name="pl-up">
-            <div v-if="showPlaylist" class="mini-pl-panel">
+            <div v-if="showPlaylist" class="mini-pl-panel desktop-pl">
               <div class="mini-pl-header">
                 <span>播放列表</span>
                 <span class="mini-pl-count">{{ playlist.length }} 首</span>
+                <button class="mini-pl-close" @click.stop="showPlaylist = false">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                </button>
               </div>
               <div class="mini-pl-scroll">
                 <div v-if="playlist.length === 0" class="mini-pl-empty">播放列表为空</div>
@@ -246,6 +199,39 @@ const sleepOptions = [15, 30, 45, 60, 90]
       </div>
     </div>
   </div>
+
+  <!-- 手机端全屏播放列表遮罩（挂在 minibar 同级，fixed 覆盖全屏） -->
+  <Transition name="sheet-up">
+    <div v-if="showPlaylist" class="mobile-pl-overlay" @click.self="showPlaylist = false">
+      <div class="mobile-pl-sheet">
+        <div class="mini-pl-header">
+          <span>播放列表</span>
+          <span class="mini-pl-count">{{ playlist.length }} 首</span>
+          <button class="pl-sheet-close" @click="showPlaylist = false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+        <div class="mini-pl-scroll">
+          <div v-if="playlist.length === 0" class="mini-pl-empty">播放列表为空</div>
+          <div v-for="(song, i) in playlist" :key="song.name + i"
+               class="mini-pl-item" :class="{ 'pl-cur': i === currentIndex }"
+               @click="emit('load-index', i); showPlaylist = false">
+            <span class="mini-pl-num">{{ i + 1 }}</span>
+            <span class="mini-pl-name">{{ song.name.replace(/\.[^.]+$/, '') }}</span>
+            <button class="mini-pl-del" @click.stop="emit('remove-from-playlist', i)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <line x1="18" y1="6" x2="6" y2="18"/>
+                <line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </Transition>
 </template>
 
 <style scoped>
@@ -480,139 +466,6 @@ const sleepOptions = [15, 30, 45, 60, 90]
   box-shadow: 0 0 6px var(--t-disc-glow);
 }
 
-/* 睡眠定时 */
-.mini-sleep-wrap {
-  position: relative;
-}
-
-.mb-sleep {
-  padding: 7px;
-  position: relative;
-  flex-direction: column;
-  gap: 1px;
-}
-
-.mb-sleep svg {
-  width: 18px;
-  height: 18px;
-}
-
-.mb-sleep.active {
-  color: var(--t-accent3);
-}
-
-.mb-sleep.active:hover {
-  color: var(--t-accent3);
-  transform: scale(1.1);
-}
-
-.mb-sleep-badge {
-  font-size: 0.46rem;
-  font-family: 'Orbitron', monospace;
-  color: var(--t-accent3);
-  line-height: 1;
-  pointer-events: none;
-  white-space: nowrap;
-}
-
-.mini-sleep-panel {
-  position: absolute;
-  bottom: calc(100% + 12px);
-  right: 0;
-  width: 210px;
-  background: color-mix(in srgb, var(--t-bg) 96%, white);
-  border: 1px solid var(--t-border);
-  border-radius: 14px;
-  box-shadow: 0 -16px 48px var(--t-shadow, rgba(0, 0, 0, 0.4));
-  backdrop-filter: blur(20px);
-  overflow: hidden;
-}
-
-.mini-sleep-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 12px 8px;
-  border-bottom: 1px solid var(--t-border);
-  font-size: 0.68rem;
-  letter-spacing: 1.5px;
-  color: var(--t-label-color);
-  font-family: 'Orbitron', monospace;
-}
-
-.mini-sleep-cancel {
-  background: none;
-  border: none;
-  color: #ff5555;
-  font-size: 0.7rem;
-  cursor: pointer;
-  padding: 1px 6px;
-  border-radius: 5px;
-  font-family: inherit;
-  transition: background 0.2s;
-}
-
-.mini-sleep-cancel:hover {
-  background: rgba(255, 85, 85, 0.1);
-}
-
-.mini-sleep-active {
-  display: flex;
-  align-items: baseline;
-  gap: 5px;
-  padding: 8px 12px 4px;
-}
-
-.mini-sleep-cd {
-  font-family: 'Orbitron', monospace;
-  font-size: 1.3rem;
-  font-weight: 700;
-  color: var(--t-accent3);
-  letter-spacing: 2px;
-}
-
-.mini-sleep-hint {
-  font-size: 0.7rem;
-  color: var(--t-text3);
-}
-
-.mini-sleep-opts {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 5px;
-  padding: 8px 10px 10px;
-}
-
-.mini-sleep-opt {
-  padding: 7px 4px;
-  border-radius: 7px;
-  border: 1px solid var(--t-border);
-  background: var(--t-overlay);
-  color: var(--t-text2);
-  font-family: inherit;
-  font-size: 0.75rem;
-  cursor: pointer;
-  transition: all 0.18s;
-  text-align: center;
-}
-
-.mini-sleep-opt:hover {
-  border-color: var(--t-accent3);
-  color: var(--t-accent3);
-  background: color-mix(in srgb, var(--t-accent3) 8%, transparent);
-}
-
-.mini-sleep-opt.active {
-  border-color: var(--t-accent3);
-  color: var(--t-accent3);
-  background: color-mix(in srgb, var(--t-accent3) 12%, transparent);
-  font-weight: 600;
-}
-
-.mini-sleep-opt-end {
-  grid-column: 1 / -1;
-}
-
 /* 播放列表 */
 .mini-pl-wrap {
   position: relative;
@@ -650,26 +503,26 @@ const sleepOptions = [15, 30, 45, 60, 90]
 }
 
 .mini-pl-panel {
-  position: absolute;
-  bottom: calc(100% + 12px);
+  position: fixed;
+  top: 0;
   right: 0;
-  width: 280px;
-  max-height: 320px;
-  background: color-mix(in srgb, var(--t-bg) 96%, white);
-  border: 1px solid var(--t-border);
-  border-radius: 14px;
-  box-shadow: 0 -16px 48px var(--t-shadow, rgba(0, 0, 0, 0.4));
+  bottom: 68px;
+  width: min(340px, 100vw);
+  background: color-mix(in srgb, var(--t-bg) 94%, white);
+  border-left: 1px solid var(--t-border);
   backdrop-filter: blur(20px);
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  box-shadow: -20px 0 60px rgba(0, 0, 0, 0.4);
+  z-index: 95;
 }
 
 .mini-pl-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 14px 8px;
+  padding: 18px 20px 14px;
   font-size: 0.72rem;
   letter-spacing: 2px;
   color: var(--t-label-color);
@@ -681,6 +534,27 @@ const sleepOptions = [15, 30, 45, 60, 90]
   font-size: 0.72rem;
   color: var(--t-text3);
   font-family: inherit;
+}
+
+.mini-pl-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--t-text3);
+  padding: 4px;
+  border-radius: 6px;
+  display: flex;
+  transition: color 0.2s;
+}
+
+.mini-pl-close svg {
+  width: 16px;
+  height: 16px;
+}
+
+.mini-pl-close:hover {
+  color: var(--t-text);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .mini-pl-scroll {
@@ -762,23 +636,23 @@ const sleepOptions = [15, 30, 45, 60, 90]
   background: rgba(255, 80, 80, 0.12);
 }
 
-/* 弹出动画 */
+/* 右侧滑入动画 */
 .pl-up-enter-active {
-  animation: plUp 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: plSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .pl-up-leave-active {
-  animation: plUp 0.16s ease reverse;
+  animation: plSlideIn 0.22s ease reverse;
 }
 
-@keyframes plUp {
+@keyframes plSlideIn {
   from {
     opacity: 0;
-    transform: translateY(10px) scale(0.97)
+    transform: translateX(40px)
   }
   to {
     opacity: 1;
-    transform: translateY(0) scale(1)
+    transform: translateX(0)
   }
 }
 
@@ -803,6 +677,80 @@ const sleepOptions = [15, 30, 45, 60, 90]
 
   .mb-fav {
     display: none;
+  }
+
+  /* 桌面浮窗隐藏，改用全屏 sheet */
+  .desktop-pl {
+    display: none !important;
+  }
+}
+
+/* 手机端播放列表全屏遮罩（默认隐藏，仅手机可见） */
+.mobile-pl-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(0, 0, 0, 0.52);
+  backdrop-filter: blur(6px);
+  align-items: flex-end;
+}
+
+.mobile-pl-sheet {
+  width: 100%;
+  max-height: 72vh;
+  background: color-mix(in srgb, var(--t-bg) 96%, white);
+  border-top: 1px solid var(--t-border);
+  border-radius: 20px 20px 0 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding-bottom: 68px; /* 让内容不被 minibar 遮住 */
+  box-sizing: border-box;
+}
+
+.pl-sheet-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--t-text3);
+  padding: 3px;
+  border-radius: 5px;
+  display: flex;
+  transition: color 0.2s;
+}
+
+.pl-sheet-close svg {
+  width: 15px;
+  height: 15px;
+}
+
+.pl-sheet-close:hover {
+  color: var(--t-text);
+}
+
+@media (max-width: 640px) {
+  .mobile-pl-overlay {
+    display: flex;
+  }
+}
+
+.sheet-up-enter-active {
+  animation: sheetUp 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.sheet-up-leave-active {
+  animation: sheetUp 0.2s ease reverse;
+}
+
+@keyframes sheetUp {
+  from {
+    opacity: 0;
+    transform: translateY(100%)
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0)
   }
 }
 </style>

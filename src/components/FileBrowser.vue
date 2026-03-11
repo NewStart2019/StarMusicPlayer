@@ -331,11 +331,11 @@ const handleDisconnect = () => {
   height: 62px;
   min-height: 62px;
   border-bottom: 1px solid var(--t-border);
-  background: rgba(0, 0, 0, 0.3);
+  background: var(--t-header-bg, rgba(0, 0, 0, 0.3));
   backdrop-filter: blur(20px);
   flex-shrink: 0;
   gap: 16px;
-  transition: border-color 0.4s;
+  transition: border-color 0.4s, background 0.4s;
 }
 
 .logo-area {

@@ -1,5 +1,5 @@
 <script setup>
-import {computed, nextTick, onUnmounted, ref} from 'vue'
+import {computed, nextTick, onUnmounted, ref, watch} from 'vue'
 import {findCurrentLyricIndex, parseLRC} from '../utils/lrcParser.js'
 import FileBrowser from './FileBrowser.vue'
 import PlayerView from './PlayerView.vue'
@@ -42,7 +42,8 @@ const THEMES = [
       '--t-title-grad': 'linear-gradient(90deg,#111827 0%,#3b82f6 100%)',
       '--t-overlay': 'rgba(0,0,0,0.05)',
       '--t-overlay2': 'rgba(0,0,0,0.04)',
-      '--t-shadow': 'rgba(0,0,0,0.15)'
+      '--t-shadow': 'rgba(0,0,0,0.15)',
+      '--t-header-bg': 'rgba(245,247,250,0.92)'
     }
   },
   {
@@ -829,9 +830,18 @@ const getProgressRatio = (event, el) => {
 
 // PlayerView 里的 seek / drag-start 事件传来原生 MouseEvent/TouchEvent
 // 需从 playerViewRef 拿到对应的进度条 DOM 元素
-const onSeek = (event) => {
+const getProgressEl = () => {
   const pv = playerViewRef.value
-  const el = pv?.progressBarRef || pv?.mobileProgressRef
+  if (!pv) return null
+  // 手机端 mobileProgressRef 有真实 DOM 则优先（桌面栏被 display:none 时其 getBoundingClientRect().width === 0）
+  const mobile = pv.mobileProgressRef?.value ?? pv.mobileProgressRef
+  const desktop = pv.progressBarRef?.value ?? pv.progressBarRef
+  if (mobile && mobile.getBoundingClientRect().width > 0) return mobile
+  return desktop
+}
+
+const onSeek = (event) => {
+  const el = getProgressEl()
   if (!el) return
   const ratio = getProgressRatio(event, el)
   audioRef.value.currentTime = ratio * duration.value
@@ -849,8 +859,7 @@ const onDragStart = (event) => {
 const onDragMove = (event) => {
   if (!isDragging.value) return
   if (event.cancelable) event.preventDefault()
-  const pv = playerViewRef.value
-  const el = pv?.progressBarRef || pv?.mobileProgressRef
+  const el = getProgressEl()
   if (!el) return
   currentTime.value = getProgressRatio(event, el) * duration.value
 }
@@ -891,6 +900,12 @@ const stopAlbumRotation = () => {
     lastTimestamp = null
   }
 }
+
+// 把主题变量同步到 document.body，使 Teleport 到 body 的子组件也能继承 CSS 变量
+const applyThemeToBody = (vars) => {
+  Object.entries(vars).forEach(([k, v]) => document.body.style.setProperty(k, v))
+}
+watch(themeVars, applyThemeToBody, {immediate: true})
 
 onUnmounted(() => {
   stopAlbumRotation()
@@ -1408,6 +1423,27 @@ onUnmounted(() => {
   to {
     opacity: 1;
     transform: translateX(0)
+  }
+}
+
+@media (max-width: 600px) {
+  .fav-panel {
+    width: 100vw;
+    left: 0;
+    right: 0;
+    border-left: none;
+    border-top: 1px solid var(--t-border);
+  }
+
+  @keyframes favIn {
+    from {
+      opacity: 0;
+      transform: translateY(40px)
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0)
+    }
   }
 }
 </style>

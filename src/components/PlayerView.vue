@@ -1,5 +1,6 @@
 <script setup>
-import {computed, onUnmounted, ref, watch} from 'vue'
+import {computed, ref} from 'vue'
+import SleepTimer from './SleepTimer.vue'
 
 const props = defineProps({
   displayTitle: {type: String, required: true},
@@ -34,45 +35,9 @@ const mobileProgressRef = ref(null)
 const lyricsContainerRef = ref(null)
 const mobileLyricsRef = ref(null)
 const showPlaylist = ref(false)
-const playlistPanelRef = ref(null)
-const showSleepPanel = ref(false)
-const sleepPanelRef = ref(null)
-
-const sleepCountdown = ref('')
-let countdownTimer = null
-const updateCountdown = () => {
-  if (!props.sleepEndTime) {
-    sleepCountdown.value = '';
-    return
-  }
-  const diff = Math.max(0, props.sleepEndTime - Date.now())
-  const m = Math.floor(diff / 60000)
-  const s = Math.floor((diff % 60000) / 1000)
-  sleepCountdown.value = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-}
-watch(() => props.sleepEndTime, (v) => {
-  if (countdownTimer) clearInterval(countdownTimer)
-  if (v) {
-    updateCountdown();
-    countdownTimer = setInterval(updateCountdown, 1000)
-  } else {
-    sleepCountdown.value = ''
-  }
-}, {immediate: true})
-onUnmounted(() => {
-  if (countdownTimer) clearInterval(countdownTimer)
-})
 
 defineExpose({progressBarRef, mobileProgressRef, lyricsContainerRef, mobileLyricsRef})
 
-const onDocClick = (e) => {
-  if (playlistPanelRef.value && !playlistPanelRef.value.contains(e.target)) showPlaylist.value = false
-  if (sleepPanelRef.value && !sleepPanelRef.value.contains(e.target)) showSleepPanel.value = false
-}
-watch([showPlaylist, showSleepPanel], ([pl, sl]) => {
-  if (pl || sl) document.addEventListener('click', onDocClick, true)
-  else document.removeEventListener('click', onDocClick, true)
-})
 
 const fmt = (sec) => {
   if (isNaN(sec) || sec < 0) return '00:00'
@@ -81,8 +46,8 @@ const fmt = (sec) => {
 }
 
 const dotStart = (i) => Math.max(0, props.currentIndex - 3) + i
-const sleepOptions = [15, 30, 45, 60, 90]
 const playModeLabel = computed(() => ({order: '顺序播放', shuffle: '随机播放', repeat: '单曲循环'})[props.playMode])
+
 </script>
 
 <template>
@@ -165,42 +130,17 @@ const playModeLabel = computed(() => ({order: '顺序播放', shuffle: '随机�
               <line x1="19" y1="4" x2="19" y2="20" stroke="currentColor" stroke-width="2" fill="none"/>
             </svg>
           </button>
-          <div class="pl-wrap" ref="playlistPanelRef">
-            <button class="ctrl-btn ctrl-list" :class="{ active: showPlaylist }"
-                    @click.stop="showPlaylist = !showPlaylist; showSleepPanel = false" title="播放列表">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="8" y1="6" x2="21" y2="6"/>
-                <line x1="8" y1="12" x2="21" y2="12"/>
-                <line x1="8" y1="18" x2="21" y2="18"/>
-                <circle cx="3" cy="6" r="1.5" fill="currentColor" stroke="none"/>
-                <circle cx="3" cy="12" r="1.5" fill="currentColor" stroke="none"/>
-                <circle cx="3" cy="18" r="1.5" fill="currentColor" stroke="none"/>
-              </svg>
-            </button>
-            <Transition name="pl-anim">
-              <div v-if="showPlaylist" class="pl-panel">
-                <div class="pl-header">
-                  <span class="pl-label">播放列表</span>
-                  <span class="pl-count">{{ playlist.length }} 首</span>
-                </div>
-                <div class="pl-scroll">
-                  <div v-if="playlist.length === 0" class="pl-empty">播放列表为空</div>
-                  <div v-for="(song, i) in playlist" :key="song.name + i"
-                       class="pl-item" :class="{ 'pl-cur': i === currentIndex }"
-                       @click="emit('load-index', i)">
-                    <span class="pl-num">{{ i + 1 }}</span>
-                    <span class="pl-name">{{ song.name.replace(/\.[^.]+$/, '') }}</span>
-                    <button class="pl-del" @click.stop="emit('remove-from-playlist', i)">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                        <line x1="18" y1="6" x2="6" y2="18"/>
-                        <line x1="6" y1="6" x2="18" y2="18"/>
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </Transition>
-          </div>
+          <button class="ctrl-btn ctrl-list" :class="{ active: showPlaylist }"
+                  @click.stop="showPlaylist = !showPlaylist" title="播放列表">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="8" y1="6" x2="21" y2="6"/>
+              <line x1="8" y1="12" x2="21" y2="12"/>
+              <line x1="8" y1="18" x2="21" y2="18"/>
+              <circle cx="3" cy="6" r="1.5" fill="currentColor" stroke="none"/>
+              <circle cx="3" cy="12" r="1.5" fill="currentColor" stroke="none"/>
+              <circle cx="3" cy="18" r="1.5" fill="currentColor" stroke="none"/>
+            </svg>
+          </button>
         </div>
 
         <!-- 第二行：音量 / 播放模式 / 睡眠定时 -->
@@ -241,41 +181,14 @@ const playModeLabel = computed(() => ({order: '顺序播放', shuffle: '随机�
             </svg>
           </button>
 
-          <div class="sleep-wrap" ref="sleepPanelRef">
-            <button class="ctrl-btn ctrl-sleep" :class="{ active: sleepMinutes > 0 }"
-                    @click.stop="showSleepPanel = !showSleepPanel; showPlaylist = false"
-                    :title="sleepMinutes > 0 ? `定时停止：${sleepCountdown}` : '定时停止'">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10"/>
-                <polyline points="12 6 12 12 16 14"/>
-              </svg>
-              <span v-if="sleepMinutes > 0" class="sleep-badge">{{ sleepCountdown }}</span>
-            </button>
-            <Transition name="pl-anim">
-              <div v-if="showSleepPanel" class="sleep-panel">
-                <div class="sleep-header">
-                  <span class="sleep-title">定时停止播放</span>
-                  <button v-if="sleepMinutes > 0" class="sleep-cancel"
-                          @click="emit('cancel-sleep-timer'); showSleepPanel = false">取消
-                  </button>
-                </div>
-                <div v-if="sleepMinutes > 0" class="sleep-active">
-                  <div class="sleep-countdown">{{ sleepCountdown }}</div>
-                  <div class="sleep-hint">将在此时间后停止播放</div>
-                </div>
-                <div class="sleep-options">
-                  <button v-for="min in sleepOptions" :key="min"
-                          class="sleep-opt" :class="{ active: sleepMinutes === min }"
-                          @click="emit('set-sleep-timer', min); showSleepPanel = false">
-                    {{ min }} 分钟
-                  </button>
-                  <button class="sleep-opt sleep-opt-end" :class="{ active: sleepMinutes === -1 }"
-                          @click="emit('set-sleep-timer', -1); showSleepPanel = false">
-                    本曲结束后
-                  </button>
-                </div>
-              </div>
-            </Transition>
+          <div class="sleep-wrap">
+            <SleepTimer
+                variant="player"
+                :sleep-minutes="sleepMinutes"
+                :sleep-end-time="sleepEndTime"
+                @set-sleep-timer="emit('set-sleep-timer', $event)"
+                @cancel-sleep-timer="emit('cancel-sleep-timer')"
+            />
           </div>
         </div>
 
@@ -428,13 +341,13 @@ const playModeLabel = computed(() => ({order: '顺序播放', shuffle: '随机�
                 </text>
               </svg>
             </button>
-            <button class="ctrl-btn ctrl-sleep" :class="{ active: sleepMinutes > 0 }"
-                    @click.stop="showSleepPanel = !showSleepPanel">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10"/>
-                <polyline points="12 6 12 12 16 14"/>
-              </svg>
-            </button>
+            <SleepTimer
+                variant="player"
+                :sleep-minutes="sleepMinutes"
+                :sleep-end-time="sleepEndTime"
+                @set-sleep-timer="emit('set-sleep-timer', $event)"
+                @cancel-sleep-timer="emit('cancel-sleep-timer')"
+            />
           </div>
         </div>
         <div v-show="mobileTab === 'lyrics'" class="m-content m-lyrics-content">
@@ -445,6 +358,7 @@ const playModeLabel = computed(() => ({order: '顺序播放', shuffle: '随机�
             <div class="lyrics-spacer"></div>
             <div v-for="(line, i) in lyrics" :key="i" class="lyric-line"
                  :class="{ active: i === currentLyricIndex, prev: i < currentLyricIndex, next: i > currentLyricIndex }"
+                 @click="emit('lyric-seek', line.time)"
             >{{ line.text || '♪' }}
             </div>
             <div class="lyrics-spacer"></div>
@@ -490,37 +404,38 @@ const playModeLabel = computed(() => ({order: '顺序播放', shuffle: '随机�
             </div>
           </div>
         </Transition>
-        <Transition name="m-pl-anim">
-          <div v-if="showSleepPanel" class="m-pl-overlay" @click.self="showSleepPanel = false">
-            <div class="m-sleep-sheet">
-              <div class="pl-header">
-                <span class="pl-label">定时停止播放</span>
-                <button class="pl-close-btn" @click="showSleepPanel = false">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <line x1="18" y1="6" x2="6" y2="18"/>
-                    <line x1="6" y1="6" x2="18" y2="18"/>
-                  </svg>
-                </button>
-              </div>
-              <div v-if="sleepMinutes > 0" class="m-sleep-active">
-                <div class="sleep-countdown">{{ sleepCountdown }}</div>
-                <div class="sleep-hint">将在此时间后停止播放</div>
-                <button class="sleep-cancel-btn" @click="emit('cancel-sleep-timer'); showSleepPanel = false">取消定时
-                </button>
-              </div>
-              <div class="m-sleep-options">
-                <button v-for="min in sleepOptions" :key="min" class="sleep-opt"
-                        :class="{ active: sleepMinutes === min }"
-                        @click="emit('set-sleep-timer', min); showSleepPanel = false">{{ min }} 分钟
-                </button>
-                <button class="sleep-opt sleep-opt-end" :class="{ active: sleepMinutes === -1 }"
-                        @click="emit('set-sleep-timer', -1); showSleepPanel = false">本曲结束后
-                </button>
-              </div>
+      </div>
+
+      <!-- ===== 桌面右侧播放列表面板 ===== -->
+      <Transition name="pl-slide">
+        <div v-if="showPlaylist" class="pl-sidebar desktop-only">
+          <div class="pl-sidebar-header">
+            <span class="pl-label">播放列表</span>
+            <span class="pl-count">{{ playlist.length }} 首</span>
+            <button class="pl-close-btn" @click="showPlaylist = false">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"/>
+                <line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
+          <div class="pl-scroll">
+            <div v-if="playlist.length === 0" class="pl-empty">播放列表为空</div>
+            <div v-for="(song, i) in playlist" :key="song.name + i"
+                 class="pl-item" :class="{ 'pl-cur': i === currentIndex }"
+                 @click="emit('load-index', i)">
+              <span class="pl-num">{{ i + 1 }}</span>
+              <span class="pl-name">{{ song.name.replace(/\.[^.]+$/, '') }}</span>
+              <button class="pl-del" @click.stop="emit('remove-from-playlist', i)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <line x1="18" y1="6" x2="6" y2="18"/>
+                  <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
             </div>
           </div>
-        </Transition>
-      </div>
+        </div>
+      </Transition>
 
     </div>
   </div>
@@ -972,138 +887,9 @@ const playModeLabel = computed(() => ({order: '顺序播放', shuffle: '随机�
   color: var(--t-accent2);
 }
 
-.ctrl-sleep {
-  width: 34px;
-  height: 34px;
-  flex-shrink: 0;
-  position: relative;
-}
-
-.ctrl-sleep svg {
-  width: 17px;
-  height: 17px;
-}
-
-.ctrl-sleep.active {
-  color: var(--t-accent3);
-}
-
-.sleep-badge {
-  position: absolute;
-  bottom: -3px;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 0.48rem;
-  color: var(--t-accent3);
-  font-family: 'Orbitron', monospace;
-  white-space: nowrap;
-  pointer-events: none;
-}
-
-/* SLEEP PANEL */
+/* .sleep-wrap 让 SleepTimer 自带 position:relative，这里只保留对齐用 */
 .sleep-wrap {
-  position: relative;
-}
-
-.sleep-panel {
-  position: absolute;
-  bottom: calc(100% + 12px);
-  right: 0;
-  width: 226px;
-  background: color-mix(in srgb, var(--t-bg) 94%, white);
-  border: 1px solid var(--t-border);
-  border-radius: 14px;
-  box-shadow: 0 20px 60px var(--t-shadow, rgba(0, 0, 0, 0.5));
-  backdrop-filter: blur(20px);
-  z-index: 30;
-  overflow: hidden;
-}
-
-.sleep-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 11px 14px 9px;
-  border-bottom: 1px solid var(--t-border);
-}
-
-.sleep-title {
-  font-family: 'Orbitron', monospace;
-  font-size: 0.62rem;
-  letter-spacing: 2px;
-  color: var(--t-label-color);
-}
-
-.sleep-cancel {
-  background: none;
-  border: none;
-  color: #ff5555;
-  font-size: 0.72rem;
-  cursor: pointer;
-  padding: 2px 8px;
-  border-radius: 6px;
-  font-family: inherit;
-  transition: background 0.2s;
-}
-
-.sleep-cancel:hover {
-  background: rgba(255, 85, 85, 0.1);
-}
-
-.sleep-active {
-  text-align: center;
-  padding: 12px 14px 4px;
-}
-
-.sleep-countdown {
-  font-family: 'Orbitron', monospace;
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: var(--t-accent3);
-  letter-spacing: 3px;
-}
-
-.sleep-hint {
-  font-size: 0.68rem;
-  color: var(--t-text3);
-  margin-top: 3px;
-}
-
-.sleep-options {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
-  padding: 10px 12px 12px;
-}
-
-.sleep-opt {
-  padding: 8px 4px;
-  border-radius: 8px;
-  border: 1px solid var(--t-border);
-  background: var(--t-overlay);
-  color: var(--t-text2);
-  font-family: inherit;
-  font-size: 0.8rem;
-  cursor: pointer;
-  transition: all 0.18s;
-  text-align: center;
-}
-
-.sleep-opt:hover {
-  border-color: var(--t-accent3);
-  color: var(--t-accent3);
-  background: color-mix(in srgb, var(--t-accent3) 8%, transparent);
-}
-
-.sleep-opt.active {
-  border-color: var(--t-accent3);
-  color: var(--t-accent3);
-  background: color-mix(in srgb, var(--t-accent3) 12%, transparent);
-  font-weight: 600;
-}
-
-.sleep-opt-end {
-  grid-column: 1 / -1;
+  flex-shrink: 0;
 }
 
 /* DOTS */
@@ -1133,33 +919,27 @@ const playModeLabel = computed(() => ({order: '顺序播放', shuffle: '随机�
   background: var(--t-text3);
 }
 
-/* PLAYLIST PANEL */
-.pl-wrap {
-  position: relative;
-}
-
-.pl-panel {
+/* PLAYLIST SIDEBAR (desktop right panel) */
+.pl-sidebar {
   position: absolute;
-  bottom: calc(100% + 12px);
+  top: 0;
   right: 0;
-  width: 290px;
-  max-height: 340px;
-  background: color-mix(in srgb, var(--t-bg) 92%, white);
-  border: 1px solid var(--t-border);
-  border-radius: 14px;
-  box-shadow: 0 20px 60px var(--t-shadow, rgba(0, 0, 0, 0.65));
+  bottom: 0;
+  width: min(340px, 100vw);
+  z-index: 50;
+  background: color-mix(in srgb, var(--t-bg) 94%, white);
+  border-left: 1px solid var(--t-border);
   backdrop-filter: blur(20px);
-  overflow: hidden;
   display: flex;
   flex-direction: column;
-  z-index: 30;
+  box-shadow: -20px 0 60px rgba(0, 0, 0, 0.4);
 }
 
-.pl-header {
+.pl-sidebar-header {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 12px 16px 10px;
+  padding: 18px 20px 14px;
   border-bottom: 1px solid var(--t-border);
   flex-shrink: 0;
 }
@@ -1182,39 +962,40 @@ const playModeLabel = computed(() => ({order: '顺序播放', shuffle: '随机�
   border: none;
   cursor: pointer;
   color: var(--t-text3);
-  padding: 2px;
-  border-radius: 4px;
+  padding: 4px;
+  border-radius: 6px;
   display: flex;
   transition: color 0.2s;
 }
 
 .pl-close-btn svg {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
 }
 
 .pl-close-btn:hover {
   color: var(--t-text);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .pl-scroll {
   overflow-y: auto;
   flex: 1;
   scrollbar-width: thin;
-  scrollbar-color: var(--t-border) transparent;
+  scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
 }
 
 .pl-item {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 14px;
+  padding: 11px 18px;
   cursor: pointer;
   transition: background 0.18s;
 }
 
 .pl-item:hover {
-  background: var(--t-overlay);
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .pl-cur {
@@ -1235,7 +1016,7 @@ const playModeLabel = computed(() => ({order: '顺序播放', shuffle: '随机�
 
 .pl-name {
   flex: 1;
-  font-size: 0.83rem;
+  font-size: 0.85rem;
   color: var(--t-text2);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1283,22 +1064,23 @@ const playModeLabel = computed(() => ({order: '顺序播放', shuffle: '随机�
   font-size: 0.85rem;
 }
 
-.pl-anim-enter-active {
-  animation: plPop 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+/* 右侧滑入动画 */
+.pl-slide-enter-active {
+  animation: plSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.pl-anim-leave-active {
-  animation: plPop 0.15s ease reverse;
+.pl-slide-leave-active {
+  animation: plSlideIn 0.22s ease reverse;
 }
 
-@keyframes plPop {
+@keyframes plSlideIn {
   from {
     opacity: 0;
-    transform: translateY(10px) scale(0.96)
+    transform: translateX(40px)
   }
   to {
     opacity: 1;
-    transform: translateY(0) scale(1)
+    transform: translateX(0)
   }
 }
 
@@ -1595,84 +1377,6 @@ const playModeLabel = computed(() => ({order: '顺序播放', shuffle: '随机�
 
   .m-pl-sheet .pl-scroll {
     max-height: calc(70vh - 54px);
-  }
-
-  .m-sleep-sheet {
-    width: 100%;
-    background: color-mix(in srgb, var(--t-bg) 95%, white);
-    border-top: 1px solid var(--t-border);
-    border-radius: 20px 20px 0 0;
-    overflow: hidden;
-  }
-
-  .m-sleep-active {
-    text-align: center;
-    padding: 16px 20px 8px;
-  }
-
-  .m-sleep-active .sleep-countdown {
-    font-family: 'Orbitron', monospace;
-    font-size: 2.2rem;
-    font-weight: 700;
-    color: var(--t-accent3);
-    letter-spacing: 3px;
-  }
-
-  .m-sleep-active .sleep-hint {
-    font-size: 0.75rem;
-    color: var(--t-text3);
-    margin-top: 4px;
-  }
-
-  .sleep-cancel-btn {
-    margin-top: 12px;
-    padding: 8px 28px;
-    border-radius: 20px;
-    border: 1px solid #ff5555;
-    background: rgba(255, 85, 85, 0.08);
-    color: #ff5555;
-    font-family: inherit;
-    font-size: 0.85rem;
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-
-  .sleep-cancel-btn:hover {
-    background: rgba(255, 85, 85, 0.18);
-  }
-
-  .m-sleep-options {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 8px;
-    padding: 12px 16px 24px;
-  }
-
-  .m-sleep-options .sleep-opt {
-    padding: 10px 4px;
-    border-radius: 10px;
-    border: 1px solid var(--t-border);
-    background: var(--t-overlay);
-    color: var(--t-text2);
-    font-family: inherit;
-    font-size: 0.82rem;
-    cursor: pointer;
-    transition: all 0.18s;
-    text-align: center;
-  }
-
-  .m-sleep-options .sleep-opt:hover, .m-sleep-options .sleep-opt.active {
-    border-color: var(--t-accent3);
-    color: var(--t-accent3);
-    background: color-mix(in srgb, var(--t-accent3) 10%, transparent);
-  }
-
-  .m-sleep-options .sleep-opt.active {
-    font-weight: 600;
-  }
-
-  .m-sleep-options .sleep-opt-end {
-    grid-column: 1 / -1;
   }
 
   .m-pl-anim-enter-active {
