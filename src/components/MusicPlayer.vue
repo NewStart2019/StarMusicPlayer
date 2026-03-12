@@ -919,7 +919,7 @@ onUnmounted(() => {
 
 <template>
   <div class="app-wrapper"
-       :style="{ ...themeVars, '--minibar-h': (currentSong && !showPlayer) ? 'calc(78px + env(safe-area-inset-bottom, 0px))' : '0px' }">
+       :style="{ ...themeVars, '--minibar-h': (currentSong && !showPlayer) ? 'calc(70px + env(safe-area-inset-bottom, 0px))' : '0px' }">
     <!-- 动态背景 -->
     <div class="bg-orb orb1"></div>
     <div class="bg-orb orb2"></div>
@@ -1215,7 +1215,7 @@ onUnmounted(() => {
   position: absolute;
   top: 0;
   right: 0;
-  bottom: 0;
+  bottom: var(--minibar-h, 0px);
   width: min(360px, 100vw);
   z-index: 50;
   background: color-mix(in srgb, var(--t-bg) 94%, white);
@@ -1339,7 +1339,6 @@ onUnmounted(() => {
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
-  padding-bottom: var(--minibar-h, 0px);
 }
 
 .fav-item {
@@ -1435,7 +1434,7 @@ onUnmounted(() => {
     right: 0;
     border-left: none;
     border-top: 1px solid var(--t-border);
-    /* padding handled by fav-list scroll area */
+
   }
 
   @keyframes favIn {

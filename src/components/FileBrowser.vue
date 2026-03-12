@@ -1,5 +1,5 @@
 <script setup>
-import {computed, ref, watch} from 'vue'
+import {ref, computed, watch} from 'vue'
 
 const props = defineProps({
   hasFolder: {type: Boolean, required: true},
@@ -333,14 +333,17 @@ watch(showThemePicker, (v) => {
 <style scoped>
 .browser-container {
   position: absolute;
-  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: var(--minibar-h, 0px);
   z-index: 1;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  transition: bottom 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* minibar 留白由各滚动容器自行处理，见 .file-list / .welcome-screen */
 
 /* Header */
 .header {
@@ -607,7 +610,7 @@ watch(showThemePicker, (v) => {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 20px 20px calc(20px + var(--minibar-h, 0px));
+  padding: 20px;
 }
 
 .welcome-inner {
@@ -739,26 +742,29 @@ watch(showThemePicker, (v) => {
   align-items: center;
   gap: 10px;
   padding: 14px 28px;
-  border-radius: 14px;
-  border: 1.5px solid var(--t-border);
-  background: var(--t-bg-card);
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--t-accent2) 50%, transparent);
+  background: color-mix(in srgb, var(--t-accent2) 14%, transparent);
   color: var(--t-accent2);
-  font-size: 1rem;
+  font-size: 0.78rem;
   font-weight: 600;
-  font-family: inherit;
+  font-family: 'Orbitron', monospace, sans-serif;
+  letter-spacing: 2px;
   cursor: pointer;
-  transition: all 0.25s;
+  transition: all 0.3s;
+  box-shadow: 0 0 20px color-mix(in srgb, var(--t-accent2) 10%, transparent);
 }
 
 .btn-server svg {
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
 }
 
 .btn-server:hover {
+  background: color-mix(in srgb, var(--t-accent2) 24%, transparent);
   border-color: var(--t-accent2);
-  background: var(--t-overlay);
-  transform: translateY(-2px);
+  box-shadow: 0 0 38px color-mix(in srgb, var(--t-accent2) 25%, transparent);
+  transform: scale(1.03);
 }
 
 .error-msg {
@@ -987,7 +993,7 @@ watch(showThemePicker, (v) => {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 4px 0 calc(16px + var(--minibar-h, 0px));
+  padding: 4px 0 16px;
 }
 
 .file-row {
