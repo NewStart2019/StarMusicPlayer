@@ -42,7 +42,8 @@ const THEMES = [
       '--t-title-grad': 'linear-gradient(90deg,#111827 0%,#3b82f6 100%)',
       '--t-overlay': 'rgba(0,0,0,0.05)',
       '--t-overlay2': 'rgba(0,0,0,0.04)',
-      '--t-shadow': 'rgba(0,0,0,0.15)'
+      '--t-shadow': 'rgba(0,0,0,0.15)',
+      '--t-header-bg': 'rgba(245,247,250,0.92)'
     }
   },
   {
@@ -77,7 +78,8 @@ const THEMES = [
       '--t-audio-clr': '#00f2fe',
       '--t-title-grad': 'linear-gradient(90deg,#fff 0%,rgba(0,242,254,0.9) 100%)',
       '--t-overlay': 'rgba(255,255,255,0.05)',
-      '--t-overlay2': 'rgba(255,255,255,0.04)'
+      '--t-overlay2': 'rgba(255,255,255,0.04)',
+      '--t-shadow': 'rgba(0,0,0,0.5)'
     }
   },
   {
@@ -916,7 +918,8 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="app-wrapper" :style="themeVars">
+  <div class="app-wrapper"
+       :style="{ ...themeVars, '--minibar-h': (currentSong && !showPlayer) ? 'calc(68px + env(safe-area-inset-bottom, 0px))' : '0px' }">
     <!-- 动态背景 -->
     <div class="bg-orb orb1"></div>
     <div class="bg-orb orb2"></div>
@@ -1431,6 +1434,7 @@ onUnmounted(() => {
     right: 0;
     border-left: none;
     border-top: 1px solid var(--t-border);
+    padding-bottom: var(--minibar-h, 0px);
   }
 
   @keyframes favIn {

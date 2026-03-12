@@ -23,15 +23,11 @@ const emit = defineEmits([
   'show-favorites', 'search-all', 'clear-search',
 ])
 
-const isMobile = ref(false)
-const checkMobile = () => {
-  isMobile.value = window.innerWidth <= 640
-}
 /* ── 本地 UI 状态 ─────────────────────────── */
 const searchQuery = ref('')
 const showThemePicker = ref(false)
 const showServerPanel = ref(false)
-const serverUrl = ref('http://192.168.31.235:8080/')
+const serverUrl = ref('http://172.16.0.170:8080/')
 const serverLoading = ref(false)
 const serverError = ref('')
 const fileInputRef = ref(null)
@@ -97,7 +93,7 @@ const handleDisconnect = () => {
 </script>
 
 <template>
-  <div class="browser-container" :style="hasMiniBar ? { paddingBottom: '68px' } : {}">
+  <div class="browser-container" :class="{ 'has-minibar': hasMiniBar }">
 
     <!-- ===== Header ===== -->
     <header class="header">
@@ -203,6 +199,7 @@ const handleDisconnect = () => {
             </button>
           </div>
           <p v-if="serverError" class="sp-error">{{ serverError }}</p>
+          <p class="sp-hint">启动服务器：<code>node server.js --root /your/music</code></p>
         </div>
 
         <p v-if="errorMsg" class="error-msg">{{ errorMsg }}</p>
@@ -325,6 +322,10 @@ const handleDisconnect = () => {
   overflow: hidden;
 }
 
+.browser-container.has-minibar {
+  padding-bottom: var(--minibar-h, 68px);
+}
+
 /* Header */
 .header {
   display: flex;
@@ -334,7 +335,7 @@ const handleDisconnect = () => {
   height: 62px;
   min-height: 62px;
   border-bottom: 1px solid var(--t-border);
-  background: var(--t-bg-glass, rgba(0, 0, 0, 0.3));
+  background: var(--t-header-bg, rgba(0, 0, 0, 0.3));
   backdrop-filter: blur(20px);
   flex-shrink: 0;
   gap: 16px;
