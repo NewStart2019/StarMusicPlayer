@@ -887,7 +887,7 @@ const startAlbumRotation = () => {
   lastTimestamp = null
   const animate = (ts) => {
     if (!lastTimestamp) lastTimestamp = ts
-    albumRotation.value = (albumRotation.value + (ts - lastTimestamp) * 0.058) % 360
+    albumRotation.value = (albumRotation.value + (ts - lastTimestamp) * 0.018) % 360
     lastTimestamp = ts
     rotationRafId = requestAnimationFrame(animate)
   }
@@ -919,7 +919,7 @@ onUnmounted(() => {
 
 <template>
   <div class="app-wrapper"
-       :style="{ ...themeVars, '--minibar-h': (currentSong && !showPlayer) ? 'calc(68px + env(safe-area-inset-bottom, 0px))' : '0px' }">
+       :style="{ ...themeVars, '--minibar-h': (currentSong && !showPlayer) ? 'calc(78px + env(safe-area-inset-bottom, 0px))' : '0px' }">
     <!-- 动态背景 -->
     <div class="bg-orb orb1"></div>
     <div class="bg-orb orb2"></div>
@@ -1339,6 +1339,7 @@ onUnmounted(() => {
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+  padding-bottom: var(--minibar-h, 0px);
 }
 
 .fav-item {
@@ -1434,7 +1435,7 @@ onUnmounted(() => {
     right: 0;
     border-left: none;
     border-top: 1px solid var(--t-border);
-    padding-bottom: var(--minibar-h, 0px);
+    /* padding handled by fav-list scroll area */
   }
 
   @keyframes favIn {

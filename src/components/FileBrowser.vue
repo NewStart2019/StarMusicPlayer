@@ -27,7 +27,7 @@ const emit = defineEmits([
 const searchQuery = ref('')
 const showThemePicker = ref(false)
 const showServerPanel = ref(false)
-const serverUrl = ref('http://172.16.0.170:8080/')
+const serverUrl = ref(`http://${window.location.hostname}:8080`)
 const serverLoading = ref(false)
 const serverError = ref('')
 const fileInputRef = ref(null)
@@ -90,14 +90,31 @@ const handleDisconnect = () => {
   showServerPanel.value = false
   emit('disconnect')
 }
+
+/* ── 主题下拉：Teleport 定位 ─────────────────── */
+const themeDropdownStyle = ref({})
+const btnThemeRef = ref(null)
+const updateDropdownPos = () => {
+  if (!btnThemeRef.value) return
+  const r = btnThemeRef.value.getBoundingClientRect()
+  themeDropdownStyle.value = {
+    position: 'fixed',
+    top: (r.bottom + 8) + 'px',
+    right: (window.innerWidth - r.right) + 'px',
+    zIndex: 9999,
+  }
+}
+watch(showThemePicker, (v) => {
+  if (v) updateDropdownPos()
+})
 </script>
 
 <template>
   <div class="browser-container" :class="{ 'has-minibar': hasMiniBar }">
 
     <!-- ===== Header ===== -->
-    <header class="header">
-      <div class="logo-area" v-if="isMobile || !showServerPanel">
+    <header class="header" :class="{ 'has-source': hasFolder }">
+      <div class="logo-area">
         <div class="logo-icon">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
             <path d="M9 19V6l12-3v13"/>
@@ -133,7 +150,7 @@ const handleDisconnect = () => {
         </div>
 
         <div class="theme-wrap" ref="themeWrapRef">
-          <button class="btn-theme" @click="showThemePicker = !showThemePicker">
+          <button class="btn-theme" ref="btnThemeRef" @click="showThemePicker = !showThemePicker">
             <span class="theme-icon">{{ themes.find(t => t.id === currentThemeId)?.icon }}</span>
             <span class="theme-label">主题</span>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -141,21 +158,23 @@ const handleDisconnect = () => {
               <path d="m6 9 6 6 6-6"/>
             </svg>
           </button>
-          <Transition name="dropdown">
-            <div v-if="showThemePicker" class="theme-dropdown">
-              <div class="dropdown-title">选择主题</div>
-              <div v-for="t in themes" :key="t.id"
-                   class="theme-opt" :class="{ active: t.id === currentThemeId }"
-                   @click="applyTheme(t.id)">
-                <span>{{ t.icon }}</span>
-                <span class="opt-name">{{ t.name }}</span>
-                <svg v-if="t.id === currentThemeId" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                     stroke-width="2.5" class="opt-check">
-                  <path d="M20 6 9 17l-5-5"/>
-                </svg>
+          <Teleport to="body">
+            <Transition name="dropdown">
+              <div v-if="showThemePicker" class="theme-dropdown-teleport" :style="themeDropdownStyle">
+                <div class="dropdown-title">选择主题</div>
+                <div v-for="t in themes" :key="t.id"
+                     class="theme-opt-tp" :class="{ 'active-tp': t.id === currentThemeId }"
+                     @click="applyTheme(t.id)">
+                  <span>{{ t.icon }}</span>
+                  <span class="opt-name-tp">{{ t.name }}</span>
+                  <svg v-if="t.id === currentThemeId" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                       stroke-width="2.5" class="opt-check-tp">
+                    <path d="M20 6 9 17l-5-5"/>
+                  </svg>
+                </div>
               </div>
-            </div>
-          </Transition>
+            </Transition>
+          </Teleport>
         </div>
       </div>
     </header>
@@ -199,7 +218,6 @@ const handleDisconnect = () => {
             </button>
           </div>
           <p v-if="serverError" class="sp-error">{{ serverError }}</p>
-          <p class="sp-hint">启动服务器：<code>node server.js --root /your/music</code></p>
         </div>
 
         <p v-if="errorMsg" class="error-msg">{{ errorMsg }}</p>
@@ -273,9 +291,9 @@ const handleDisconnect = () => {
         </button>
       </div>
 
-      <div class="file-grid" v-if="filteredEntries.length > 0">
+      <div class="file-list" v-if="filteredEntries.length > 0">
         <div v-for="entry in filteredEntries" :key="entry.name"
-             class="file-card" :class="entry.type === 'folder' ? 'folder-card' : 'audio-card'"
+             class="file-row" :class="entry.type === 'folder' ? 'folder-card' : 'audio-card'"
              @click="entry.type === 'folder' ? emit('enter-folder', entry) : emit('play-audio', { entry, visibleList: filteredEntries })">
           <div v-if="entry.type === 'folder'" class="card-icon folder-icon">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -322,12 +340,12 @@ const handleDisconnect = () => {
   overflow: hidden;
 }
 
-.browser-container.has-minibar {
-  padding-bottom: var(--minibar-h, 68px);
-}
+/* minibar 留白由各滚动容器自行处理，见 .file-list / .welcome-screen */
 
 /* Header */
 .header {
+  position: relative;
+  z-index: 100;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -335,8 +353,8 @@ const handleDisconnect = () => {
   height: 62px;
   min-height: 62px;
   border-bottom: 1px solid var(--t-border);
-  background: var(--t-header-bg, rgba(0, 0, 0, 0.3));
-  backdrop-filter: blur(20px);
+  background: var(--t-bg-glass, rgba(10, 10, 30, 0.88));
+  backdrop-filter: blur(20px) saturate(1.3);
   flex-shrink: 0;
   gap: 16px;
   transition: border-color 0.4s, background 0.4s;
@@ -513,7 +531,7 @@ const handleDisconnect = () => {
   top: calc(100% + 8px);
   right: 0;
   min-width: 175px;
-  z-index: 300;
+  z-index: 2000;
   background: color-mix(in srgb, var(--t-bg) 92%, white);
   border: 1px solid var(--t-border);
   border-radius: 14px;
@@ -589,7 +607,7 @@ const handleDisconnect = () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 20px;
+  padding: 20px 20px calc(20px + var(--minibar-h, 0px));
 }
 
 .welcome-inner {
@@ -721,7 +739,7 @@ const handleDisconnect = () => {
   align-items: center;
   gap: 10px;
   padding: 14px 28px;
-  border-radius: 999px;
+  border-radius: 14px;
   border: 1.5px solid var(--t-border);
   background: var(--t-bg-card);
   color: var(--t-accent2);
@@ -830,20 +848,6 @@ const handleDisconnect = () => {
   color: #ff6b6b;
   font-size: 0.8rem;
   margin: 8px 0 0;
-}
-
-.sp-hint {
-  color: var(--t-text3);
-  font-size: 0.75rem;
-  margin: 10px 0 0;
-}
-
-.sp-hint code {
-  color: var(--t-accent2);
-  background: var(--t-overlay2, rgba(255, 255, 255, 0.06));
-  padding: 1px 5px;
-  border-radius: 4px;
-  font-size: 0.72rem;
 }
 
 /* 文件浏览器 */
@@ -975,46 +979,43 @@ const handleDisconnect = () => {
   font-size: 0.82rem;
 }
 
-.file-grid {
+/* ── 文件列表（每行一项） ─────────────────── */
+.file-list {
   flex: 1;
   overflow-y: auto;
   min-height: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
-  gap: 12px;
-  padding-bottom: 20px;
-  align-content: start;
-}
-
-.file-card {
-  position: relative;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 7px;
-  padding: 15px 10px 11px;
-  background: var(--t-bg-card);
-  border: 1px solid var(--t-border);
-  border-radius: 12px;
-  cursor: pointer;
-  text-align: center;
-  transition: all 0.22s;
+  gap: 2px;
+  padding: 4px 0 calc(16px + var(--minibar-h, 0px));
 }
 
-.file-card:hover {
+.file-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--t-bg-card);
+  border: 1px solid var(--t-border);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.18s;
+}
+
+.file-row:hover {
   background: color-mix(in srgb, var(--t-accent1) 6%, transparent);
   border-color: color-mix(in srgb, var(--t-accent1) 35%, transparent);
-  transform: translateY(-2px);
-  box-shadow: 0 6px 22px color-mix(in srgb, var(--t-accent1) 10%, transparent);
+  transform: translateX(3px);
 }
 
 .card-icon {
-  width: 42px;
-  height: 42px;
+  width: 38px;
+  height: 38px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 10px;
+  border-radius: 9px;
   position: relative;
   flex-shrink: 0;
 }
@@ -1030,43 +1031,42 @@ const handleDisconnect = () => {
 }
 
 .card-icon svg {
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
 }
 
 .card-name {
+  flex: 1;
   color: var(--t-text2);
-  font-size: 0.74rem;
+  font-size: 0.88rem;
   font-weight: 500;
-  line-height: 1.3;
-  word-break: break-all;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+  line-height: 1.35;
   overflow: hidden;
-  width: 100%;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.audio-card .card-name {
+  color: var(--t-text);
 }
 
 .card-ext {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  font-size: 0.57rem;
-  padding: 1px 4px;
+  font-size: 0.6rem;
+  padding: 2px 6px;
   background: var(--t-audio-bg);
-  border-radius: 3px;
+  border-radius: 4px;
   color: var(--t-audio-clr);
   font-family: 'Orbitron', monospace;
+  flex-shrink: 0;
 }
 
 .playing-waves {
-  position: absolute;
-  bottom: -5px;
-  right: -5px;
   display: flex;
   align-items: flex-end;
   gap: 2px;
-  height: 13px;
+  height: 14px;
+  flex-shrink: 0;
 }
 
 .playing-waves span {
@@ -1089,7 +1089,7 @@ const handleDisconnect = () => {
     height: 3px
   }
   50% {
-    height: 11px
+    height: 12px
   }
 }
 
@@ -1110,11 +1110,6 @@ const handleDisconnect = () => {
 
 /* 响应式 */
 @media (max-width: 880px) {
-  .file-grid {
-    grid-template-columns: repeat(auto-fill, minmax(98px, 1fr));
-    gap: 10px;
-  }
-
   .search-wrap {
     width: min(200px, 26vw);
   }
@@ -1125,6 +1120,10 @@ const handleDisconnect = () => {
     padding: 0 14px;
     height: 54px;
     min-height: 54px;
+  }
+
+  .header.has-source .logo-area {
+    display: none;
   }
 
   .logo-text {
@@ -1158,29 +1157,24 @@ const handleDisconnect = () => {
     padding: 0 12px;
   }
 
-  .file-grid {
-    grid-template-columns: repeat(auto-fill, minmax(85px, 1fr));
-    gap: 8px;
-  }
-
-  .file-card {
-    padding: 12px 8px 9px;
-    gap: 6px;
+  .file-row {
+    padding: 9px 10px;
+    gap: 10px;
   }
 
   .card-icon {
-    width: 36px;
-    height: 36px;
+    width: 34px;
+    height: 34px;
     border-radius: 8px;
   }
 
   .card-icon svg {
-    width: 19px;
-    height: 19px;
+    width: 17px;
+    height: 17px;
   }
 
   .card-name {
-    font-size: 0.68rem;
+    font-size: 0.83rem;
   }
 
   .btn-text {
@@ -1200,9 +1194,80 @@ const handleDisconnect = () => {
   .search-wrap {
     width: calc(100vw - 165px);
   }
+}
+</style>
 
-  .file-grid {
-    grid-template-columns: repeat(3, 1fr);
+<!-- 主题下拉全局样式（Teleport 到 body，scoped 不适用） -->
+<style>
+.theme-dropdown-teleport {
+  min-width: 175px;
+  background: color-mix(in srgb, var(--t-bg, #1a1a2e) 92%, white);
+  border: 1px solid var(--t-border, rgba(255, 255, 255, 0.1));
+  border-radius: 14px;
+  padding: 8px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(20px);
+}
+
+.theme-dropdown-teleport .dropdown-title {
+  font-size: 0.65rem;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--t-text3, rgba(255, 255, 255, 0.35));
+  padding: 4px 10px 8px;
+  font-family: 'Orbitron', monospace;
+}
+
+.theme-opt-tp {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--t-text2, rgba(255, 255, 255, 0.7));
+  font-size: 0.9rem;
+  transition: background 0.2s;
+}
+
+.theme-opt-tp:hover {
+  background: var(--t-overlay, rgba(255, 255, 255, 0.07));
+  color: var(--t-text, #fff);
+}
+
+.active-tp {
+  background: color-mix(in srgb, var(--t-accent1, #a78bfa) 12%, transparent) !important;
+  color: var(--t-accent1, #a78bfa) !important;
+}
+
+.opt-name-tp {
+  flex: 1;
+  font-weight: 500;
+}
+
+.opt-check-tp {
+  width: 13px;
+  height: 13px;
+  color: var(--t-accent1, #a78bfa);
+  flex-shrink: 0;
+}
+
+.dropdown-enter-active {
+  animation: dropDownGlobal 0.2s ease;
+}
+
+.dropdown-leave-active {
+  animation: dropDownGlobal 0.15s ease reverse;
+}
+
+@keyframes dropDownGlobal {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.96)
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1)
   }
 }
 </style>
