@@ -1,5 +1,5 @@
 <script setup>
-import {ref, computed, watch} from 'vue'
+import {computed, ref, watch} from 'vue'
 
 const props = defineProps({
   hasFolder: {type: Boolean, required: true},
@@ -326,6 +326,7 @@ watch(showThemePicker, (v) => {
     </div>
 
     <input ref="fileInputRef" type="file" webkitdirectory multiple style="display:none"
+           accept=".mp3,.flac,.wav,.aac,.ogg,.m4a,.opus,.wma,.ape,.alac,.lrc"
            @change="handleFolderSelect"/>
   </div>
 </template>

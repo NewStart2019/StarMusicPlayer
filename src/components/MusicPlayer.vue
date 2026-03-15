@@ -1,5 +1,5 @@
 <script setup>
-import {computed, nextTick, onUnmounted, ref, watch} from 'vue'
+import {computed, nextTick, onMounted, onUnmounted, ref, watch} from 'vue'
 import {findCurrentLyricIndex, parseLRC} from '../utils/lrcParser.js'
 import FileBrowser from './FileBrowser.vue'
 import PlayerView from './PlayerView.vue'
@@ -228,10 +228,13 @@ const THEMES = [
   },
 ]
 
-const currentThemeId = ref('daylight')
+const currentThemeId = ref(localStorage.getItem('sm-theme') || 'daylight')
 const themeVars = computed(() => THEMES.find(t => t.id === currentThemeId.value)?.vars ?? {})
 const applyTheme = (id) => {
-  if (THEMES.find(t => t.id === id)) currentThemeId.value = id
+  if (THEMES.find(t => t.id === id)) {
+    currentThemeId.value = id;
+    localStorage.setItem('sm-theme', id)
+  }
 }
 
 // =============================================
@@ -584,20 +587,150 @@ const playAudio = async (entry, visibleList) => {
   await loadAndPlay(currentIndex.value)
 }
 
+
+/* ══ 音频缓存（最近25首）══════════════════════════════════════
+ *  服务器模式：Cache API 缓存 HTTP response
+ *  本地模式：IndexedDB 存 ArrayBuffer（File 对象不能跨会话持久化，
+ *            但同一会话内 fileObj 已存在，直接 createObjectURL 无需缓存）
+ *  缓存 key 列表存在 localStorage sm-audio-cache-keys（有序，最多25个）
+ * ══════════════════════════════════════════════════════════ */
+const CACHE_NAME = 'sm-audio-v1'
+const CACHE_MAX = 25
+const CACHE_KEYS_LS = 'sm-audio-cache-keys'
+
+const getCacheKeys = () => {
+  try {
+    return JSON.parse(localStorage.getItem(CACHE_KEYS_LS) || '[]')
+  } catch {
+    return []
+  }
+}
+const saveCacheKeys = (keys) => {
+  localStorage.setItem(CACHE_KEYS_LS, JSON.stringify(keys))
+}
+
+// 淘汰超出 CACHE_MAX 的旧缓存
+const evictOldCache = async (cache, keys) => {
+  while (keys.length > CACHE_MAX) {
+    const old = keys.shift()
+    await cache.delete(old).catch(() => {
+    })
+  }
+}
+
+// 把 url 加入已知 key 列表（LRU：已存在则移到末尾）
+const touchCacheKey = (url) => {
+  const keys = getCacheKeys()
+  const idx = keys.indexOf(url)
+  if (idx !== -1) keys.splice(idx, 1)
+  keys.push(url)
+  saveCacheKeys(keys)
+  return keys
+}
+
+/**
+ * 解析服务器曲目的播放 src
+ *   - 已缓存：直接返回 cache match 的 blob URL
+ *   - 未缓存：fetch → 存入 Cache API → 返回原 url（浏览器后续从 cache 读）
+ */
+const resolveAudioSrc = async (song) => {
+  if (song.source !== 'server') return URL.createObjectURL(song.fileObj)
+  const url = song.url
+  try {
+    const cache = await caches.open(CACHE_NAME)
+    const cached = await cache.match(url)
+    if (cached) {
+      touchCacheKey(url)
+      const blob = await cached.blob()
+      return URL.createObjectURL(blob)
+    }
+    // 未命中：先返回原 url 播放，同时异步缓存
+    cacheAudioInBackground(cache, url)
+    return url
+  } catch {
+    // caches API 不可用（如非 HTTPS / 隐私模式）时降级
+    return url
+  }
+}
+
+const cacheAudioInBackground = async (cache, url) => {
+  try {
+    const resp = await fetch(url)
+    if (!resp.ok) return
+    await cache.put(url, resp.clone())
+    const keys = touchCacheKey(url)
+    await evictOldCache(cache, keys)
+    saveCacheKeys(keys.slice(-CACHE_MAX))
+  } catch { /* 缓存失败不影响播放 */
+  }
+}
+
+/* MIME 类型表 */
+const AUDIO_MIME = {
+  '.mp3': 'audio/mpeg',
+  '.flac': 'audio/flac',
+  '.wav': 'audio/wav',
+  '.aac': 'audio/aac',
+  '.ogg': 'audio/ogg',
+  '.m4a': 'audio/mp4',
+  '.opus': 'audio/opus',
+  '.wma': 'audio/x-ms-wma',
+}
+
+// 追踪当前 play() 返回的 Promise，暂停前必须先 await 它
+// 否则 pause() 会打断尚未 resolve 的 play()，抛 AbortError
+let _playPromise = null
+
 const loadAndPlay = async (index) => {
   if (index < 0 || index >= playlist.value.length) return
   currentIndex.value = index
   const song = playlist.value[index]
   const audio = audioRef.value
-  if (audio.src?.startsWith('blob:')) URL.revokeObjectURL(audio.src)
-  audio.src = song.source === 'server' ? song.url : URL.createObjectURL(song.fileObj)
+
+  // 1. 如果有正在进行的 play()，先等它完成再 pause，避免 AbortError
+  if (_playPromise) {
+    try {
+      await _playPromise
+    } catch {
+    }
+    _playPromise = null
+  }
+  audio.pause()
+
+  // 2. 清理旧 blob URL 和旧 <source> 子节点
+  const oldBlobSrc = [...audio.children]
+      .find(el => el.tagName === 'SOURCE' && el.src?.startsWith('blob:'))?.src
+  while (audio.firstChild) audio.removeChild(audio.firstChild)
+  audio.removeAttribute('src')
+  if (oldBlobSrc) URL.revokeObjectURL(oldBlobSrc)
+
+  // 3. 获取新 src
+  const src = song.source === 'server'
+      ? await resolveAudioSrc(song)
+      : URL.createObjectURL(song.fileObj)
+
+  // 4. 直接设 audio.src（最兼容的方式，<source> 子元素对 m4a 反而有问题）
+  audio.src = src
   audio.volume = volume.value
+
+  // 5. 调用 load() 后直接 play()，不等 canplay
+  //    浏览器规范：play() 内部会等待足够数据才开始播放
+  //    等 canplay 反而在某些浏览器/格式下永远不触发
+  audio.load()
+
   try {
-    await audio.play();
-    isPlaying.value = true;
+    _playPromise = audio.play()
+    await _playPromise
+    _playPromise = null
+    isPlaying.value = true
     startAlbumRotation()
   } catch (e) {
-    console.error('播放失败:', e)
+    _playPromise = null
+    // AbortError = 被新的 load/play 打断，属于正常切歌，不报错
+    if (e?.name !== 'AbortError') {
+      console.error('播放失败:', e?.message ?? e)
+    }
+    isPlaying.value = false
   }
   await loadLyrics(song)
 }
@@ -634,17 +767,34 @@ const loadLyrics = async (song) => {
   }
 }
 
-const togglePlay = () => {
-  const audio = audioRef.value;
-  if (!audio) return
+const togglePlay = async () => {
+  const audio = audioRef.value
+  if (!audio || !currentSong.value) return
   if (isPlaying.value) {
-    audio.pause();
-    isPlaying.value = false;
+    // 必须先 await 当前 play() Promise，再 pause，否则抛 AbortError
+    if (_playPromise) {
+      try {
+        await _playPromise
+      } catch {
+      }
+      _playPromise = null
+    }
+    audio.pause()
+    isPlaying.value = false
     stopAlbumRotation()
   } else {
-    audio.play();
-    isPlaying.value = true;
-    startAlbumRotation()
+    try {
+      _playPromise = audio.play()
+      await _playPromise
+      _playPromise = null
+      isPlaying.value = true
+      startAlbumRotation()
+    } catch (e) {
+      _playPromise = null
+      if (e?.name !== 'AbortError') {
+        console.error('togglePlay 失败:', e?.message ?? e)
+      }
+    }
   }
 }
 const prevSong = () => {
@@ -907,9 +1057,48 @@ const applyThemeToBody = (vars) => {
 }
 watch(themeVars, applyThemeToBody, {immediate: true})
 
+
+/* ── 键盘快捷键 ──────────────────────────────────────────── */
+const seekBy = (delta) => {
+  const audio = audioRef.value
+  if (!audio || !duration.value) return
+  const next = Math.min(Math.max(audio.currentTime + delta, 0), duration.value)
+  audio.currentTime = next
+  currentTime.value = next
+}
+
+const onKeyDown = (e) => {
+  // 焦点在输入框/文本区域时不拦截
+  const tag = document.activeElement?.tagName
+  if (tag === 'INPUT' || tag === 'TEXTAREA') return
+
+  switch (e.key) {
+    case 'ArrowRight':
+      e.preventDefault()
+      seekBy(3)
+      break
+    case 'ArrowLeft':
+      e.preventDefault()
+      seekBy(-3)
+      break
+    case ' ':
+      // 空格：播放/暂停（仅有歌曲时响应）
+      if (currentSong.value) {
+        e.preventDefault()
+        togglePlay()
+      }
+      break
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('keydown', onKeyDown)
+})
+
 onUnmounted(() => {
   stopAlbumRotation()
   if (sleepTimerId) clearTimeout(sleepTimerId)
+  document.removeEventListener('keydown', onKeyDown)
   document.removeEventListener('mousemove', onDragMove)
   document.removeEventListener('mouseup', stopDrag)
   document.removeEventListener('touchmove', onDragMove)
@@ -1033,6 +1222,7 @@ onUnmounted(() => {
           @next="nextSong"
           @seek="onSeek"
           @drag-start="onDragStart"
+          @seek-by="seekBy"
           @volume-change="onVolumeChange"
           @toggle-fav="toggleFavorite"
           @load-index="loadAndPlay"

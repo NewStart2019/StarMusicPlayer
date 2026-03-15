@@ -1,5 +1,5 @@
 <script setup>
-import {computed, onMounted, ref} from 'vue'
+import {computed, nextTick, onMounted, onUnmounted, ref, watch} from 'vue'
 import SleepTimer from './SleepTimer.vue'
 import PlaylistPanel from './PlaylistPanel.vue'
 
@@ -28,6 +28,7 @@ const emit = defineEmits([
   'toggle-fav', 'load-index', 'lyric-seek',
   'remove-from-playlist', 'cycle-play-mode',
   'set-sleep-timer', 'cancel-sleep-timer',
+  'seek-by',
 ])
 
 /* ── template refs ───────────────────────────── */
@@ -47,9 +48,33 @@ const checkMobile = () => {
   isMobile.value = window.innerWidth <= 600
 }
 onMounted(() => {
-  checkMobile();
+  checkMobile()
   window.addEventListener('resize', checkMobile)
+  document.addEventListener('keydown', onKeyDown)
 })
+onUnmounted(() => {
+  window.removeEventListener('resize', checkMobile)
+  document.removeEventListener('keydown', onKeyDown)
+})
+
+const onKeyDown = (e) => {
+  const tag = document.activeElement?.tagName
+  if (tag === 'INPUT' || tag === 'TEXTAREA') return
+  switch (e.key) {
+    case 'ArrowRight':
+      e.preventDefault()
+      emit('seek-by', 3)
+      break
+    case 'ArrowLeft':
+      e.preventDefault()
+      emit('seek-by', -3)
+      break
+    case ' ':
+      e.preventDefault()
+      emit('toggle-play')
+      break
+  }
+}
 
 /* ── helpers ─────────────────────────────────── */
 const fmt = (s) => {
@@ -59,6 +84,88 @@ const fmt = (s) => {
 const dotStart = (i) => Math.max(0, props.currentIndex - 3) + i
 const playModeLabel = computed(() =>
     ({order: '顺序播放', shuffle: '随机播放', repeat: '单曲循环'})[props.playMode])
+
+// ── 歌词逐字填色：纯 DOM 操作，不用 :style 绑定 ─────────────────────
+// 原理：
+//   active 行：background-size 从 0% 以 CSS transition 过渡到 100%
+//              transition-duration = 该句歌词持续时长（秒）
+//              background-image 是单色 accent 渐变，配合 background-clip:text
+//   prev  行：background-size 立刻设为 100%（已播完全亮）
+//   其他行：清除所有 inline style
+//
+// 关键：不用 Vue :style 绑定，完全用 DOM 直接操作
+//   因为 Vue re-render 会覆盖 inline style，打断 CSS transition
+
+const LYRIC_BASE_STYLE = [
+  ['backgroundImage', 'linear-gradient(to right, var(--t-lyric-active), var(--t-lyric-active))'],
+  ['backgroundRepeat', 'no-repeat'],
+  ['webkitBackgroundClip', 'text'],
+  ['backgroundClip', 'text'],
+  ['webkitTextFillColor', 'transparent'],
+]
+
+const applyLyricStyles = (newIdx, oldIdx) => {
+  const containers = [lyricsContainerRef.value, mobileLyricsRef.value]
+  containers.forEach(container => {
+    if (!container) return
+    const lines = container.querySelectorAll('.lyric-line')
+
+    // 清除旧 active 行（如果存在且不是 prev）
+    if (oldIdx >= 0 && oldIdx < lines.length) {
+      // 旧行变成 prev：立即设为 100% 全亮，无 transition
+      const oldEl = lines[oldIdx]
+      oldEl.style.transition = 'none'
+      LYRIC_BASE_STYLE.forEach(([k, v]) => {
+        oldEl.style[k] = v
+      })
+      oldEl.style.backgroundSize = '100% 100%'
+    }
+
+    // 新 active 行
+    if (newIdx >= 0 && newIdx < lines.length) {
+      const el = lines[newIdx]
+      const cur = props.lyrics[newIdx]
+      const nxt = props.lyrics[newIdx + 1]
+      const dur = nxt ? Math.max(0.3, nxt.time - cur.time) : 5
+
+      // 先关 transition，立刻把 background-size 设为 0%
+      el.style.transition = 'none'
+      LYRIC_BASE_STYLE.forEach(([k, v]) => {
+        el.style[k] = v
+      })
+      el.style.backgroundSize = '0% 100%'
+
+      // 强制浏览器 flush 布局，再开 transition 触发动画
+      void el.offsetWidth
+
+      el.style.transition = `background-size ${dur}s linear`
+      el.style.backgroundSize = '100% 100%'
+    }
+  })
+}
+
+watch(() => props.currentLyricIndex, async (newIdx, oldIdx) => {
+  await nextTick()
+  applyLyricStyles(newIdx, oldIdx ?? -1)
+})
+
+// 切歌时重置所有歌词行样式
+watch(() => props.lyrics, async () => {
+  await nextTick()
+  const containers = [lyricsContainerRef.value, mobileLyricsRef.value]
+  containers.forEach(container => {
+    if (!container) return
+    container.querySelectorAll('.lyric-line').forEach(el => {
+      el.style.transition = ''
+      el.style.backgroundImage = ''
+      el.style.backgroundRepeat = ''
+      el.style.backgroundSize = ''
+      el.style.backgroundClip = ''
+      el.style.webkitBackgroundClip = ''
+      el.style.webkitTextFillColor = ''
+    })
+  })
+})
 </script>
 
 <template>
@@ -294,8 +401,17 @@ const playModeLabel = computed(() =>
           </div>
         </div>
 
-        <!-- 主控制行：上一首 | 播放/暂停 | 下一首 -->
+        <!-- 主控制行：后退3s | 上一首 | 播放/暂停 | 下一首 | 快进3s -->
         <div class="m-controls-row">
+          <button class="ctrl-btn m-seek-btn" @click="emit('seek-by',-3)" title="后退3秒">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M2.5 12a9.5 9.5 0 1 1 1.4 5"/>
+              <path d="M2.5 17V12h5" fill="currentColor" stroke="none"/>
+              <text x="8" y="14.5" font-size="5" fill="currentColor" stroke="none" font-weight="bold"
+                    font-family="sans-serif" text-anchor="middle">3
+              </text>
+            </svg>
+          </button>
           <button class="ctrl-btn m-prev" @click="emit('prev')">
             <svg viewBox="0 0 24 24" fill="currentColor">
               <polygon points="19,20 9,12 19,4"/>
@@ -315,6 +431,15 @@ const playModeLabel = computed(() =>
             <svg viewBox="0 0 24 24" fill="currentColor">
               <polygon points="5,4 15,12 5,20"/>
               <line x1="19" y1="4" x2="19" y2="20" stroke="currentColor" stroke-width="2" fill="none"/>
+            </svg>
+          </button>
+          <button class="ctrl-btn m-seek-btn" @click="emit('seek-by',3)" title="快进3秒">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21.5 12a9.5 9.5 0 1 0-1.4 5"/>
+              <path d="M21.5 17V12h-5" fill="currentColor" stroke="none"/>
+              <text x="16" y="14.5" font-size="5" fill="currentColor" stroke="none" font-weight="bold"
+                    font-family="sans-serif" text-anchor="middle">3
+              </text>
             </svg>
           </button>
         </div>
@@ -947,7 +1072,7 @@ const playModeLabel = computed(() =>
   color: var(--t-text3);
   border-radius: 8px;
   cursor: pointer;
-  transition: all .36s cubic-bezier(.4, 0, .2, 1);
+  transition: color .36s, font-size .36s, transform .36s, filter .36s, opacity .36s, background-color .36s;
   line-height: 1.55
 }
 
@@ -959,8 +1084,8 @@ const playModeLabel = computed(() =>
 .lyric-line.active {
   color: var(--t-lyric-active);
   font-size: 1.15rem;
-  font-weight: 600;
-  text-shadow: 0 0 18px var(--t-lyric-glow);
+  font-weight: 700;
+  filter: drop-shadow(0 0 8px var(--t-lyric-glow));
   transform: scale(1.04);
   background: color-mix(in srgb, var(--t-lyric-active) 5%, transparent)
 }
@@ -1148,27 +1273,42 @@ const playModeLabel = computed(() =>
     align-items: center;
     justify-content: space-between;
     flex-shrink: 0;
-    padding: 8px 16px 4px;
+    padding: 8px 4px 4px;
   }
 
   .m-prev, .m-next {
-    width: 52px;
-    height: 52px
+    width: 46px;
+    height: 46px
   }
 
   .m-prev svg, .m-next svg {
-    width: 26px;
-    height: 26px
+    width: 22px;
+    height: 22px
   }
 
   .m-play-btn {
-    width: 72px !important;
-    height: 72px !important
+    width: 68px !important;
+    height: 68px !important
   }
 
   .m-play-btn svg {
-    width: 30px !important;
-    height: 30px !important
+    width: 28px !important;
+    height: 28px !important
+  }
+
+  .m-seek-btn {
+    width: 40px;
+    height: 40px;
+    color: var(--t-text3)
+  }
+
+  .m-seek-btn svg {
+    width: 22px;
+    height: 22px
+  }
+
+  .m-seek-btn:hover {
+    color: var(--t-accent1)
   }
 
   /* 工具栏：歌词 | 音量 | 定时 | 列表 */
