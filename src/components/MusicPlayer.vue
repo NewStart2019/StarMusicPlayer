@@ -1,6 +1,7 @@
 <script setup>
 import {computed, nextTick, onMounted, onUnmounted, ref, watch} from 'vue'
 import {findCurrentLyricIndex, parseLRC} from '../utils/lrcParser.js'
+import {parseM4AMetadata, parsePlainLyrics} from '../utils/m4aMetadata.js'
 import FileBrowser from './FileBrowser.vue'
 import PlayerView from './PlayerView.vue'
 import MiniBar from './MiniBar.vue'
@@ -266,6 +267,7 @@ const volume = ref(parseFloat(localStorage.getItem('sm-volume') ?? '0.8'))
 const isDragging = ref(false)
 const favorites = ref(new Set())
 const lyrics = ref([])
+const m4aMeta = ref(null)  // 当前 m4a 文件的内嵌元数据
 const currentLyricIndex = ref(-1)
 const albumRotation = ref(0)
 const audioRef = ref(null)
@@ -315,10 +317,14 @@ const songTitle = computed(() =>
     currentSong.value ? currentSong.value.name.replace(/\.[^.]+$/, '') : '未知歌曲'
 )
 const artistName = computed(() => {
+  // 优先使用 m4a 内嵌元数据
+  if (m4aMeta.value?.artist) return m4aMeta.value.artist
   const i = songTitle.value.indexOf(' - ')
   return i > 0 ? songTitle.value.substring(0, i) : '未知艺术家'
 })
 const displayTitle = computed(() => {
+  // 优先使用 m4a 内嵌元数据
+  if (m4aMeta.value?.title) return m4aMeta.value.title
   const i = songTitle.value.indexOf(' - ')
   return i > 0 ? songTitle.value.substring(i + 3) : songTitle.value
 })
@@ -792,6 +798,45 @@ const loadAndPlay = async (index) => {
 const loadLyrics = async (song) => {
   lyrics.value = [];
   currentLyricIndex.value = -1
+  m4aMeta.value = null
+
+  const ext = song.name.substring(song.name.lastIndexOf('.')).toLowerCase()
+  const isM4A = MUST_PRELOAD_EXTS.has(ext)
+
+  // ── m4a：先解析内嵌元数据（title/artist/lyrics/cover）────────────
+  if (isM4A) {
+    try {
+      let buffer = null
+      if (song.source === 'server') {
+        // 服务器模式：fetch 完整文件
+        const resp = await fetch(song.url)
+        if (resp.ok) buffer = await resp.arrayBuffer()
+      } else if (song.fileObj) {
+        // 本地模式：直接读 File 对象
+        buffer = await song.fileObj.arrayBuffer()
+      }
+      if (buffer) {
+        const meta = parseM4AMetadata(buffer)
+        m4aMeta.value = meta
+        // 优先使用内嵌歌词
+        if (meta.lyrics) {
+          // 判断是否 LRC 格式
+          const lrcTest = /\[\d{1,3}:\d{2}/
+          if (lrcTest.test(meta.lyrics)) {
+            lyrics.value = parseLRC(meta.lyrics)
+          } else {
+            const plain = parsePlainLyrics(meta.lyrics)
+            if (plain) lyrics.value = plain
+          }
+          if (lyrics.value.length) return  // 已有歌词，不再找外部 .lrc
+        }
+      }
+    } catch (e) {
+      console.warn('M4A 元数据解析失败:', e)
+    }
+  }
+
+  // ── 从外部 .lrc 文件加载（优先级低于内嵌）──────────────────────
   if (song.source === 'server') {
     if (song.lrc) {
       try {
@@ -1163,7 +1208,7 @@ onUnmounted(() => {
 
 <template>
   <div class="app-wrapper"
-       :style="{ ...themeVars, '--minibar-h': (currentSong && !showPlayer) ? 'calc(70px + env(safe-area-inset-bottom, 0px))' : '0px' }">
+       :style="{ ...themeVars, '--minibar-h': (currentSong && !showPlayer) ? 'calc(100px + env(safe-area-inset-bottom, 0px))' : '0px' }">
     <!-- 动态背景 -->
     <div class="bg-orb orb1"></div>
     <div class="bg-orb orb2"></div>

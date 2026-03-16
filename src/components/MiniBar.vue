@@ -202,7 +202,7 @@ onUnmounted(() => window.removeEventListener('resize', checkMobile))
   display: flex;
   align-items: center;
   padding: 0 24px;
-  height: 68px;
+  height: 84px;
   gap: 0;
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
