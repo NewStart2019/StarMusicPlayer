@@ -151,6 +151,7 @@ const emit = defineEmits(['close', 'load-index', 'remove-from-playlist'])
   flex: 1;
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
+  padding-bottom: 8px;
 }
 
 .pl-panel-item {
@@ -252,7 +253,7 @@ const emit = defineEmits(['close', 'load-index', 'remove-from-playlist'])
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
 }
 
 .pl-sheet-handle {

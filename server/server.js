@@ -65,11 +65,10 @@ const safePath = (rawPath) => {
  * 递归扫描目录，返回文件树
  * @param {string} dirPath  - 目录绝对路径
  * @param {string} baseRoot - 相对路径的基准根（用于生成 relativePath）
- * @param {string} baseUrl  - 服务根地址，如 http://192.168.1.10:3000（用于生成完整 url）
  * @param {number} depth    - 当前递归深度（防无限递归，最深 20 层）
  * @returns {object} 节点对象
  */
-const scanDir = (dirPath, baseRoot, baseUrl, depth = 0) => {
+const scanDir = (dirPath, baseRoot, depth = 0) => {
   if (depth > 20) return null
 
   let stat
@@ -88,7 +87,7 @@ const scanDir = (dirPath, baseRoot, baseUrl, depth = 0) => {
     if (!ALLOWED_EXTS.has(ext)) return null
     // 将相对路径中的反斜杠（Windows）统一转为正斜杠，再编码为 URL 参数
     const urlPath = relativePath.split(path.sep).join('/')
-    const downloadUrl = `${baseUrl}/api/download?path=${encodeURIComponent(urlPath)}`
+    const downloadUrl = `/api/download?path=${encodeURIComponent(urlPath)}`
     return {
       type: 'file',
       name,
@@ -112,7 +111,7 @@ const scanDir = (dirPath, baseRoot, baseUrl, depth = 0) => {
     }
 
     const childNodes = children
-      .map(child => scanDir(path.join(dirPath, child), baseRoot, baseUrl, depth + 1))
+      .map(child => scanDir(path.join(dirPath, child), baseRoot, depth + 1))
       .filter(Boolean)  // 过滤掉 null（不可访问 / 非白名单文件）
 
     // 目录本身没有任何允许的子节点时也过滤掉
@@ -211,14 +210,8 @@ const handleFiles = (req, res, query) => {
   }
   if (!stat.isDirectory()) return sendError(res, 400, `指定路径不是目录`)
 
-  // 从请求头 Host 推导 baseUrl，用于生成文件的完整 url 字段
-  // 优先使用 X-Forwarded-Host（反向代理场景），回退到 Host 头，最后用配置值
-  const hostHeader = req.headers['x-forwarded-host'] || req.headers['host'] || `${HOST}:${PORT}`
-  const proto = req.headers['x-forwarded-proto'] || 'http'
-  const baseUrl = `${proto}://${hostHeader}`
-
-  // 扫描
-  const tree = scanDir(targetDir, ROOT_DIR, baseUrl)
+  // 扫描（url 字段使用相对路径，由前端相对当前域名拼接）
+  const tree = scanDir(targetDir, ROOT_DIR)
   if (!tree) return sendError(res, 500, '扫描目录失败或目录为空')
 
   if (flatMode) {
@@ -235,7 +228,6 @@ const handleFiles = (req, res, query) => {
     return sendJSON(res, 200, {
       success: true,
       root: ROOT_DIR,
-      baseUrl,
       dir: path.relative(ROOT_DIR, targetDir) || '.',
       scannedAt: new Date().toISOString(),
       totalFiles: files.length,
@@ -246,7 +238,6 @@ const handleFiles = (req, res, query) => {
   sendJSON(res, 200, {
     success: true,
     root: ROOT_DIR,
-    baseUrl,
     dir: path.relative(ROOT_DIR, targetDir) || '.',
     scannedAt: new Date().toISOString(),
     tree,
@@ -291,8 +282,14 @@ const handleDownload = (req, res, query) => {
   const mimeType = getMimeType(ext)
   const rangeHeader = req.headers['range']
 
-  // ── Range 请求（支持音频流 / 断点续传）──────────────────────────
-  if (rangeHeader) {
+  // m4a / aac 的 MP4 容器：moov atom 可能在文件末尾，
+  // 浏览器拿到 Range 开头几 KB 时没有解码元数据，无法播放。
+  // 对这类格式禁用 Range，始终返回完整文件（200），让浏览器完整接收后再解码。
+  const NO_RANGE_EXTS = new Set(['.m4a', '.aac', '.mp4'])
+  const allowRange = rangeHeader && !NO_RANGE_EXTS.has(ext)
+
+  // ── Range 请求（mp3 / flac / ogg 等流式格式）────────────────────
+  if (allowRange) {
     const match = rangeHeader.match(/bytes=(\d*)-(\d*)/)
     if (!match) return sendError(res, 416, 'Range 格式错误')
 
@@ -319,18 +316,20 @@ const handleDownload = (req, res, query) => {
     return
   }
 
-  // ── 完整文件响应（inline，支持浏览器直接播放）──────────────────────
-  // 必须用 inline 而非 attachment，否则 <audio> 会拒绝作为媒体源
-  // Accept-Ranges: bytes 告知浏览器支持断点续传，<audio> 才会发 Range 请求
+  // ── 完整文件响应（m4a/aac 必须走这里，其他格式非 Range 请求也走这里）──
   const encodedName = encodeURIComponent(fileName).replace(/'/g, "%27")
   const asciiFallback = encodeURIComponent(fileName).replace(/%[0-9A-Fa-f]{2}/g, '_')
+
+  // m4a/aac 不声明 Accept-Ranges，防止浏览器发 Range 请求
+  const extraHeaders = NO_RANGE_EXTS.has(ext) ? {} : {'Accept-Ranges': 'bytes'}
+
   res.writeHead(200, {
     'Content-Type': mimeType,
     'Content-Length': fileSize,
-    'Accept-Ranges': 'bytes',
     'Content-Disposition': `inline; filename="${asciiFallback}"; filename*=UTF-8''${encodedName}`,
     'Access-Control-Allow-Origin': '*',
     'Cache-Control': 'public, max-age=3600',
+    ...extraHeaders,
   })
   const stream = fs.createReadStream(absPath)
   stream.pipe(res)
@@ -347,7 +346,7 @@ const getMimeType = (ext) => ({
   '.wav': 'audio/wav',
   '.aac': 'audio/aac',
   '.ogg': 'audio/ogg',
-  '.m4a': 'audio/mp4; codecs="mp4a.40.2"',
+  '.m4a': 'audio/mp4',
   '.opus': 'audio/opus',
   '.wma': 'audio/x-ms-wma',
   '.ape': 'audio/ape',
@@ -479,7 +478,7 @@ const server = http.createServer((req, res) => {
   if (req.method === 'GET') {
     if (pathname === '/api/files') return handleFiles(req, res, searchParams)
     if (pathname === '/api/download') return handleDownload(req, res, searchParams)
-    if (pathname === '/favorite/data') return handleFavoriteData(req, res)
+    if (pathname === '/api/favorite/data') return handleFavoriteData(req, res)
 
     // 根路径返回接口说明
     if (pathname === '/') {
@@ -490,9 +489,9 @@ const server = http.createServer((req, res) => {
         routes: [
           {method: 'GET', path: '/api/files', description: '递归扫描目录，返回文件树 JSON'},
           {method: 'GET', path: '/api/download', description: '下载或流式播放指定文件，支持 Range'},
-          {method: 'GET', path: '/favorite/data', description: '返回收藏列表数组（最新在前）'},
-          {method: 'POST', path: '/favorite/add', description: '添加歌曲到收藏（自动去重，最新在前）'},
-          {method: 'POST', path: '/favorite/remove', description: '从收藏中移除歌曲（按 url 或 name 匹配）'},
+          {method: 'GET', path: '/api/favorite/data', description: '返回收藏列表数组（最新在前）'},
+          {method: 'POST', path: '/api/favorite/add', description: '添加歌曲到收藏（自动去重，最新在前）'},
+          {method: 'POST', path: '/api/favorite/remove', description: '从收藏中移除歌曲（按 url 或 name 匹配）'},
         ],
       })
     }
@@ -502,8 +501,8 @@ const server = http.createServer((req, res) => {
 
   // ── POST 路由 ───────────────────────────────────────────────────
   if (req.method === 'POST') {
-    if (pathname === '/favorite/add') return handleFavoriteAdd(req, res)
-    if (pathname === '/favorite/remove') return handleFavoriteRemove(req, res)
+    if (pathname === '/api/favorite/add') return handleFavoriteAdd(req, res)
+    if (pathname === '/api/favorite/remove') return handleFavoriteRemove(req, res)
     return sendError(res, 404, `未知路由: ${pathname}`)
   }
 
@@ -518,9 +517,9 @@ server.listen(PORT, HOST, () => {
   }
   console.log(`  文件列表        : http://${displayHost}:${PORT}/api/files`)
   console.log(`  文件下载        : http://${displayHost}:${PORT}/api/download?path=<相对路径>`)
-  console.log(`  收藏列表        : http://${displayHost}:${PORT}/favorite/data`)
-  console.log(`  添加收藏(POST)  : http://${displayHost}:${PORT}/favorite/add`)
-  console.log(`  移除收藏(POST)  : http://${displayHost}:${PORT}/favorite/remove\n`)
+  console.log(`  收藏列表        : http://${displayHost}:${PORT}/api/favorite/data`)
+  console.log(`  添加收藏(POST)  : http://${displayHost}:${PORT}/api/favorite/add`)
+  console.log(`  移除收藏(POST)  : http://${displayHost}:${PORT}/api/favorite/remove\n`)
 })
 
 server.on('error', (err) => {

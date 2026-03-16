@@ -262,7 +262,7 @@ const showPlayer = ref(false)
 const isPlaying = ref(false)
 const currentTime = ref(0)
 const duration = ref(0)
-const volume = ref(0.8)
+const volume = ref(parseFloat(localStorage.getItem('sm-volume') ?? '0.8'))
 const isDragging = ref(false)
 const favorites = ref(new Set())
 const lyrics = ref([])
@@ -405,9 +405,9 @@ const hasAudioInFolder = (folder) => {
 // =============================================
 // 服务器模式
 // =============================================
-const serverBase = ref('')   // 连接成功后存储 server base URL，供收藏接口使用
-const connectServer = async ({url}) => {
-  const base = url.replace(/\/$/, '')
+const serverBase = ref(window.location.origin)  // 默认当前域名，无需手动输入
+const connectServer = async ({url} = {}) => {
+  const base = (url || window.location.origin).replace(/\/$/, '')
   fileBrowserRef.value?.setServerLoading(true)
   fileBrowserRef.value?.setServerError('')
   try {
@@ -485,14 +485,7 @@ const disconnectServer = () => {
 }
 
 const refreshServer = () => {
-  // 重新拉取：遍历 serverTree 找根节点 url 前缀
-  const firstAudio = findFirstAudio(serverTree.value)
-  if (!firstAudio?.url) return
-  try {
-    const u = new URL(firstAudio.url)
-    connectServer({url: `${u.protocol}//${u.host}`})
-  } catch { /* 无法解析则忽略 */
-  }
+  connectServer({url: serverBase.value || window.location.origin})
 }
 const findFirstAudio = (node) => {
   if (!node) return null
@@ -633,22 +626,59 @@ const touchCacheKey = (url) => {
  *   - 已缓存：直接返回 cache match 的 blob URL
  *   - 未缓存：fetch → 存入 Cache API → 返回原 url（浏览器后续从 cache 读）
  */
+// 这些格式的容器（MP4/M4A）moov atom 可能在文件末尾
+// 必须完整下载后才能解码，不能流式播放
+const MUST_PRELOAD_EXTS = new Set(['.m4a', '.aac', '.mp4'])
+
 const resolveAudioSrc = async (song) => {
   if (song.source !== 'server') return URL.createObjectURL(song.fileObj)
   const url = song.url
+  const ext = song.name.substring(song.name.lastIndexOf('.')).toLowerCase()
+
   try {
     const cache = await caches.open(CACHE_NAME)
     const cached = await cache.match(url)
     if (cached) {
+      // 缓存命中：直接转成 blob URL
       touchCacheKey(url)
       const blob = await cached.blob()
       return URL.createObjectURL(blob)
     }
-    // 未命中：先返回原 url 播放，同时异步缓存
+
+    // 未命中缓存
+    if (MUST_PRELOAD_EXTS.has(ext)) {
+      // m4a/aac：必须完整下载再播放（moov 可能在文件末尾）
+      // 下载完成后同时存入缓存
+      const resp = await fetch(url)
+      if (!resp.ok) return url
+      const blob = await resp.blob()
+      // 存入缓存（用 Response 重新包装 blob）
+      cache.put(url, new Response(blob, {
+        headers: {'Content-Type': blob.type || 'audio/mp4'}
+      })).then(() => {
+        const keys = touchCacheKey(url)
+        evictOldCache(cache, keys)
+        saveCacheKeys(keys.slice(-CACHE_MAX))
+      }).catch(() => {
+      })
+      touchCacheKey(url)
+      return URL.createObjectURL(blob)
+    }
+
+    // 其他格式（mp3/flac/ogg）：支持流式播放，直接返回 url，后台缓存
     cacheAudioInBackground(cache, url)
     return url
+
   } catch {
-    // caches API 不可用（如非 HTTPS / 隐私模式）时降级
+    // caches API 不可用时降级：m4a 仍需完整下载
+    if (MUST_PRELOAD_EXTS.has(ext)) {
+      try {
+        const blob = await fetch(url).then(r => r.blob())
+        return URL.createObjectURL(blob)
+      } catch {
+        return url
+      }
+    }
     return url
   }
 }
@@ -681,13 +711,31 @@ const AUDIO_MIME = {
 // 否则 pause() 会打断尚未 resolve 的 play()，抛 AbortError
 let _playPromise = null
 
+// 防重入令牌：每次 loadAndPlay 生成新令牌，await 结束后检查是否仍是最新调用
+// 若不是（期间有新的 loadAndPlay 被触发），则放弃本次结果
+let _loadToken = 0
+
 const loadAndPlay = async (index) => {
   if (index < 0 || index >= playlist.value.length) return
+
+  // 生成本次调用的唯一令牌
+  const token = ++_loadToken
+
   currentIndex.value = index
   const song = playlist.value[index]
   const audio = audioRef.value
 
-  // 1. 如果有正在进行的 play()，先等它完成再 pause，避免 AbortError
+  // 移动端 autoplay policy：必须在用户手势的同步调用栈内调用 play()
+  // 在任何 await 之前先触发一次 play()，解锁媒体播放权限，然后立即 pause
+  try {
+    const unlockPromise = audio.play()
+    audio.pause()
+    if (unlockPromise) unlockPromise.catch(() => {
+    })
+  } catch (_) { /* 忽略解锁失败 */
+  }
+
+  // 先等正在进行的 play() resolve，再 pause，避免 AbortError
   if (_playPromise) {
     try {
       await _playPromise
@@ -697,26 +745,33 @@ const loadAndPlay = async (index) => {
   }
   audio.pause()
 
-  // 2. 清理旧 blob URL 和旧 <source> 子节点
-  const oldBlobSrc = [...audio.children]
-      .find(el => el.tagName === 'SOURCE' && el.src?.startsWith('blob:'))?.src
-  while (audio.firstChild) audio.removeChild(audio.firstChild)
-  audio.removeAttribute('src')
-  if (oldBlobSrc) URL.revokeObjectURL(oldBlobSrc)
+  // 获取新 src（可能耗时：m4a 需完整 fetch）
+  let src
+  if (song.source === 'server') {
+    src = await resolveAudioSrc(song)
+  } else {
+    const ext = song.name.substring(song.name.lastIndexOf('.')).toLowerCase()
+    if (MUST_PRELOAD_EXTS.has(ext)) {
+      const mime = {'.m4a': 'audio/mp4', '.aac': 'audio/aac', '.mp4': 'audio/mp4'}[ext] || 'audio/mp4'
+      const buf = await song.fileObj.arrayBuffer()
+      src = URL.createObjectURL(new Blob([buf], {type: mime}))
+    } else {
+      src = URL.createObjectURL(song.fileObj)
+    }
+  }
 
-  // 3. 获取新 src
-  const src = song.source === 'server'
-      ? await resolveAudioSrc(song)
-      : URL.createObjectURL(song.fileObj)
+  // await 期间若有新的 loadAndPlay 被触发，放弃本次结果，释放已创建的 blob
+  if (token !== _loadToken) {
+    if (src.startsWith('blob:')) URL.revokeObjectURL(src)
+    return
+  }
 
-  // 4. 直接设 audio.src（最兼容的方式，<source> 子元素对 m4a 反而有问题）
+  // 释放旧 blob URL（在确定要使用新 src 之后再 revoke，避免过早释放）
+  if (audio.src?.startsWith('blob:')) URL.revokeObjectURL(audio.src)
+
+  // 赋值 audio.src —— 浏览器规范：赋值时自动触发内部 load 算法
   audio.src = src
   audio.volume = volume.value
-
-  // 5. 调用 load() 后直接 play()，不等 canplay
-  //    浏览器规范：play() 内部会等待足够数据才开始播放
-  //    等 canplay 反而在某些浏览器/格式下永远不触发
-  audio.load()
 
   try {
     _playPromise = audio.play()
@@ -726,7 +781,6 @@ const loadAndPlay = async (index) => {
     startAlbumRotation()
   } catch (e) {
     _playPromise = null
-    // AbortError = 被新的 load/play 打断，属于正常切歌，不报错
     if (e?.name !== 'AbortError') {
       console.error('播放失败:', e?.message ?? e)
     }
@@ -831,14 +885,14 @@ const toggleFavorite = async () => {
     try {
       if (!wasFav) {
         // 添加收藏
-        await fetch(`${serverBase.value}/favorite/add`, {
+        await fetch(`/api/favorite/add`, {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify(song),
         })
       } else {
         // 取消收藏
-        await fetch(`${serverBase.value}/favorite/remove`, {
+        await fetch(`/api/favorite/remove`, {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({url: song.url, name: song.name}),
@@ -857,14 +911,14 @@ const favLoading = ref(false)
 const favError = ref('')
 
 const loadFavorites = async () => {
-  if (!serverBase.value) {
+  if (sourceMode.value !== 'server') {
     favError.value = '请先连接服务器';
     return
   }
   favLoading.value = true;
   favError.value = ''
   try {
-    const res = await fetch(`${serverBase.value}/favorite/data`)
+    const res = await fetch(`/api/favorite/data`)
     const data = await res.json()
     if (data.success) {
       favoritesList.value = data.data
@@ -1027,6 +1081,7 @@ const stopDrag = () => {
 const onVolumeChange = (event) => {
   volume.value = parseFloat(event.target.value)
   if (audioRef.value) audioRef.value.volume = volume.value
+  localStorage.setItem('sm-volume', volume.value)
 }
 
 // =============================================
