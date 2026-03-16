@@ -633,22 +633,59 @@ const touchCacheKey = (url) => {
  *   - 已缓存：直接返回 cache match 的 blob URL
  *   - 未缓存：fetch → 存入 Cache API → 返回原 url（浏览器后续从 cache 读）
  */
+// 这些格式的容器（MP4/M4A）moov atom 可能在文件末尾
+// 必须完整下载后才能解码，不能流式播放
+const MUST_PRELOAD_EXTS = new Set(['.m4a', '.aac', '.mp4'])
+
 const resolveAudioSrc = async (song) => {
   if (song.source !== 'server') return URL.createObjectURL(song.fileObj)
   const url = song.url
+  const ext = song.name.substring(song.name.lastIndexOf('.')).toLowerCase()
+
   try {
     const cache = await caches.open(CACHE_NAME)
     const cached = await cache.match(url)
     if (cached) {
+      // 缓存命中：直接转成 blob URL
       touchCacheKey(url)
       const blob = await cached.blob()
       return URL.createObjectURL(blob)
     }
-    // 未命中：先返回原 url 播放，同时异步缓存
+
+    // 未命中缓存
+    if (MUST_PRELOAD_EXTS.has(ext)) {
+      // m4a/aac：必须完整下载再播放（moov 可能在文件末尾）
+      // 下载完成后同时存入缓存
+      const resp = await fetch(url)
+      if (!resp.ok) return url
+      const blob = await resp.blob()
+      // 存入缓存（用 Response 重新包装 blob）
+      cache.put(url, new Response(blob, {
+        headers: {'Content-Type': blob.type || 'audio/mp4'}
+      })).then(() => {
+        const keys = touchCacheKey(url)
+        evictOldCache(cache, keys)
+        saveCacheKeys(keys.slice(-CACHE_MAX))
+      }).catch(() => {
+      })
+      touchCacheKey(url)
+      return URL.createObjectURL(blob)
+    }
+
+    // 其他格式（mp3/flac/ogg）：支持流式播放，直接返回 url，后台缓存
     cacheAudioInBackground(cache, url)
     return url
+
   } catch {
-    // caches API 不可用（如非 HTTPS / 隐私模式）时降级
+    // caches API 不可用时降级：m4a 仍需完整下载
+    if (MUST_PRELOAD_EXTS.has(ext)) {
+      try {
+        const blob = await fetch(url).then(r => r.blob())
+        return URL.createObjectURL(blob)
+      } catch {
+        return url
+      }
+    }
     return url
   }
 }
@@ -681,8 +718,16 @@ const AUDIO_MIME = {
 // 否则 pause() 会打断尚未 resolve 的 play()，抛 AbortError
 let _playPromise = null
 
+// 防重入令牌：每次 loadAndPlay 生成新令牌，await 结束后检查是否仍是最新调用
+// 若不是（期间有新的 loadAndPlay 被触发），则放弃本次结果
+let _loadToken = 0
+
 const loadAndPlay = async (index) => {
   if (index < 0 || index >= playlist.value.length) return
+
+  // 生成本次调用的唯一令牌
+  const token = ++_loadToken
+
   currentIndex.value = index
   const song = playlist.value[index]
   const audio = audioRef.value
@@ -697,16 +742,31 @@ const loadAndPlay = async (index) => {
   }
   audio.pause()
 
-  // 释放旧 blob URL
+  // 获取新 src（可能耗时：m4a 需完整 fetch）
+  let src
+  if (song.source === 'server') {
+    src = await resolveAudioSrc(song)
+  } else {
+    const ext = song.name.substring(song.name.lastIndexOf('.')).toLowerCase()
+    if (MUST_PRELOAD_EXTS.has(ext)) {
+      const mime = {'.m4a': 'audio/mp4', '.aac': 'audio/aac', '.mp4': 'audio/mp4'}[ext] || 'audio/mp4'
+      const buf = await song.fileObj.arrayBuffer()
+      src = URL.createObjectURL(new Blob([buf], {type: mime}))
+    } else {
+      src = URL.createObjectURL(song.fileObj)
+    }
+  }
+
+  // await 期间若有新的 loadAndPlay 被触发，放弃本次结果，释放已创建的 blob
+  if (token !== _loadToken) {
+    if (src.startsWith('blob:')) URL.revokeObjectURL(src)
+    return
+  }
+
+  // 释放旧 blob URL（在确定要使用新 src 之后再 revoke，避免过早释放）
   if (audio.src?.startsWith('blob:')) URL.revokeObjectURL(audio.src)
 
-  // 获取新 src
-  const src = song.source === 'server'
-      ? await resolveAudioSrc(song)
-      : URL.createObjectURL(song.fileObj)
-
-  // 直接赋值 audio.src —— 浏览器规范：赋值时自动触发内部 load 算法
-  // 绝对不要手动调用 audio.load()，会中断 src 的加载并导致 NotSupportedError
+  // 赋值 audio.src —— 浏览器规范：赋值时自动触发内部 load 算法
   audio.src = src
   audio.volume = volume.value
 
