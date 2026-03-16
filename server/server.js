@@ -18,7 +18,7 @@
 import http from 'http'
 import fs from 'fs'
 import path from 'path'
-import { URL } from 'url'
+import {URL} from 'url'
 
 // ─── 配置 ────────────────────────────────────────────────────────────────────
 
@@ -29,9 +29,9 @@ const getArg = (flag) => {
   return i !== -1 ? args[i + 1] : null
 }
 
-const PORT      = parseInt(getArg('--port') || '3000', 10)
-const HOST      = getArg('--host') || '0.0.0.0'
-const ROOT_DIR  = path.resolve(getArg('--root') || process.cwd())
+const PORT = parseInt(getArg('--port') || '3000', 10)
+const HOST = getArg('--host') || '0.0.0.0'
+const ROOT_DIR = path.resolve(getArg('--root') || process.cwd())
 
 /** 允许访问的音频 + 歌词扩展名（安全白名单） */
 const ALLOWED_EXTS = new Set([
@@ -56,7 +56,7 @@ const safePath = (rawPath) => {
   if (!rawPath) return null
   // 将 URL 中的正斜杠统一转为系统路径分隔符（兼容 Windows）
   const normalized = rawPath.split('/').join(path.sep)
-  const resolved   = path.resolve(ROOT_DIR, normalized)
+  const resolved = path.resolve(ROOT_DIR, normalized)
   if (!resolved.startsWith(ROOT_DIR + path.sep) && resolved !== ROOT_DIR) return null
   return resolved
 }
@@ -73,35 +73,43 @@ const scanDir = (dirPath, baseRoot, baseUrl, depth = 0) => {
   if (depth > 20) return null
 
   let stat
-  try { stat = fs.statSync(dirPath) } catch { return null }
+  try {
+    stat = fs.statSync(dirPath)
+  } catch {
+    return null
+  }
 
-  const name         = path.basename(dirPath)
+  const name = path.basename(dirPath)
   const relativePath = path.relative(baseRoot, dirPath)
-  const ext          = path.extname(name).toLowerCase()
+  const ext = path.extname(name).toLowerCase()
 
   if (stat.isFile()) {
     // 只返回白名单内的文件
     if (!ALLOWED_EXTS.has(ext)) return null
     // 将相对路径中的反斜杠（Windows）统一转为正斜杠，再编码为 URL 参数
-    const urlPath     = relativePath.split(path.sep).join('/')
+    const urlPath = relativePath.split(path.sep).join('/')
     const downloadUrl = `${baseUrl}/api/download?path=${encodeURIComponent(urlPath)}`
     return {
-      type         : 'file',
+      type: 'file',
       name,
       ext,
       relativePath,
-      url          : downloadUrl,
-      size         : stat.size,
-      sizeReadable : formatSize(stat.size),
-      mtime        : stat.mtime.toISOString(),
-      isAudio      : isAudio(ext),
-      isLrc        : ext === '.lrc',
+      url: downloadUrl,
+      size: stat.size,
+      sizeReadable: formatSize(stat.size),
+      mtime: stat.mtime.toISOString(),
+      isAudio: isAudio(ext),
+      isLrc: ext === '.lrc',
     }
   }
 
   if (stat.isDirectory()) {
     let children
-    try { children = fs.readdirSync(dirPath) } catch { children = [] }
+    try {
+      children = fs.readdirSync(dirPath)
+    } catch {
+      children = []
+    }
 
     const childNodes = children
       .map(child => scanDir(path.join(dirPath, child), baseRoot, baseUrl, depth + 1))
@@ -112,7 +120,9 @@ const scanDir = (dirPath, baseRoot, baseUrl, depth = 0) => {
 
     // 为音频文件匹配同目录下同名 .lrc 文件，注入 lrc 字段
     const lrcMap = new Map()
-    childNodes.forEach(n => { if (n.isLrc) lrcMap.set(n.name, n.url) })
+    childNodes.forEach(n => {
+      if (n.isLrc) lrcMap.set(n.name, n.url)
+    })
     childNodes.forEach(n => {
       if (n.isAudio) {
         const lrcName = n.name.replace(/\.[^.]+$/, '') + '.lrc'
@@ -127,12 +137,12 @@ const scanDir = (dirPath, baseRoot, baseUrl, depth = 0) => {
     })
 
     return {
-      type         : 'folder',
+      type: 'folder',
       name,
       relativePath,
-      mtime        : stat.mtime.toISOString(),
-      childCount   : childNodes.length,
-      children     : childNodes,
+      mtime: stat.mtime.toISOString(),
+      childCount: childNodes.length,
+      children: childNodes,
     }
   }
 
@@ -141,13 +151,13 @@ const scanDir = (dirPath, baseRoot, baseUrl, depth = 0) => {
 
 /** 判断是否音频文件 */
 const isAudio = (ext) =>
-  ['.mp3','.flac','.wav','.aac','.ogg','.m4a','.opus','.wma','.ape','.alac'].includes(ext)
+  ['.mp3', '.flac', '.wav', '.aac', '.ogg', '.m4a', '.opus', '.wma', '.ape', '.alac'].includes(ext)
 
 /** 文件大小格式化 */
 const formatSize = (bytes) => {
-  if (bytes < 1024)        return `${bytes} B`
-  if (bytes < 1024 ** 2)   return `${(bytes / 1024).toFixed(1)} KB`
-  if (bytes < 1024 ** 3)   return `${(bytes / 1024 ** 2).toFixed(2)} MB`
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} KB`
+  if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(2)} MB`
   return `${(bytes / 1024 ** 3).toFixed(2)} GB`
 }
 
@@ -155,16 +165,16 @@ const formatSize = (bytes) => {
 const sendJSON = (res, status, data) => {
   const body = JSON.stringify(data, null, 2)
   res.writeHead(status, {
-    'Content-Type'                : 'application/json; charset=utf-8',
-    'Access-Control-Allow-Origin' : '*',
-    'Content-Length'              : Buffer.byteLength(body),
+    'Content-Type': 'application/json; charset=utf-8',
+    'Access-Control-Allow-Origin': '*',
+    'Content-Length': Buffer.byteLength(body),
   })
   res.end(body)
 }
 
 /** 返回错误 JSON */
 const sendError = (res, status, message) =>
-  sendJSON(res, status, { success: false, error: message })
+  sendJSON(res, status, {success: false, error: message})
 
 // ─── 路由处理 ─────────────────────────────────────────────────────────────────
 
@@ -185,8 +195,8 @@ const sendError = (res, status, message) =>
  * }
  */
 const handleFiles = (req, res, query) => {
-  const dirParam  = query.get('dir') || ''
-  const flatMode  = query.get('flat') === '1'
+  const dirParam = query.get('dir') || ''
+  const flatMode = query.get('flat') === '1'
 
   // 安全解析路径
   const targetDir = dirParam ? safePath(dirParam) : ROOT_DIR
@@ -194,7 +204,9 @@ const handleFiles = (req, res, query) => {
 
   // 确认存在且是目录
   let stat
-  try { stat = fs.statSync(targetDir) } catch {
+  try {
+    stat = fs.statSync(targetDir)
+  } catch {
     return sendError(res, 404, `目录不存在: ${dirParam || ROOT_DIR}`)
   }
   if (!stat.isDirectory()) return sendError(res, 400, `指定路径不是目录`)
@@ -202,8 +214,8 @@ const handleFiles = (req, res, query) => {
   // 从请求头 Host 推导 baseUrl，用于生成文件的完整 url 字段
   // 优先使用 X-Forwarded-Host（反向代理场景），回退到 Host 头，最后用配置值
   const hostHeader = req.headers['x-forwarded-host'] || req.headers['host'] || `${HOST}:${PORT}`
-  const proto      = req.headers['x-forwarded-proto'] || 'http'
-  const baseUrl    = `${proto}://${hostHeader}`
+  const proto = req.headers['x-forwarded-proto'] || 'http'
+  const baseUrl = `${proto}://${hostHeader}`
 
   // 扫描
   const tree = scanDir(targetDir, ROOT_DIR, baseUrl)
@@ -213,27 +225,30 @@ const handleFiles = (req, res, query) => {
     // 扁平化：递归收集所有文件节点
     const files = []
     const flatten = (node) => {
-      if (node.type === 'file') { files.push(node); return }
+      if (node.type === 'file') {
+        files.push(node);
+        return
+      }
       node.children?.forEach(flatten)
     }
     flatten(tree)
     return sendJSON(res, 200, {
-      success    : true,
-      root       : ROOT_DIR,
+      success: true,
+      root: ROOT_DIR,
       baseUrl,
-      dir        : path.relative(ROOT_DIR, targetDir) || '.',
-      scannedAt  : new Date().toISOString(),
-      totalFiles : files.length,
+      dir: path.relative(ROOT_DIR, targetDir) || '.',
+      scannedAt: new Date().toISOString(),
+      totalFiles: files.length,
       files,
     })
   }
 
   sendJSON(res, 200, {
-    success   : true,
-    root      : ROOT_DIR,
+    success: true,
+    root: ROOT_DIR,
     baseUrl,
-    dir       : path.relative(ROOT_DIR, targetDir) || '.',
-    scannedAt : new Date().toISOString(),
+    dir: path.relative(ROOT_DIR, targetDir) || '.',
+    scannedAt: new Date().toISOString(),
     tree,
   })
 }
@@ -264,57 +279,66 @@ const handleDownload = (req, res, query) => {
 
   // 文件存在性检查
   let stat
-  try { stat = fs.statSync(absPath) } catch {
+  try {
+    stat = fs.statSync(absPath)
+  } catch {
     return sendError(res, 404, `文件不存在: ${filePath}`)
   }
   if (!stat.isFile()) return sendError(res, 400, '指定路径不是文件')
 
-  const fileName   = path.basename(absPath)
-  const fileSize   = stat.size
-  const mimeType   = getMimeType(ext)
+  const fileName = path.basename(absPath)
+  const fileSize = stat.size
+  const mimeType = getMimeType(ext)
   const rangeHeader = req.headers['range']
 
-  // ── Range 请求（支持音频流 / 断点续传）──────────────────────────
-  if (rangeHeader) {
+  // m4a / aac 的 MP4 容器：moov atom 可能在文件末尾，
+  // 浏览器拿到 Range 开头几 KB 时没有解码元数据，无法播放。
+  // 对这类格式禁用 Range，始终返回完整文件（200），让浏览器完整接收后再解码。
+  const NO_RANGE_EXTS = new Set(['.m4a', '.aac', '.mp4'])
+  const allowRange = rangeHeader && !NO_RANGE_EXTS.has(ext)
+
+  // ── Range 请求（mp3 / flac / ogg 等流式格式）────────────────────
+  if (allowRange) {
     const match = rangeHeader.match(/bytes=(\d*)-(\d*)/)
     if (!match) return sendError(res, 416, 'Range 格式错误')
 
     const start = match[1] ? parseInt(match[1], 10) : 0
-    const end   = match[2] ? parseInt(match[2], 10) : fileSize - 1
+    const end = match[2] ? parseInt(match[2], 10) : fileSize - 1
 
     if (start > end || end >= fileSize) {
-      res.writeHead(416, { 'Content-Range': `bytes */${fileSize}` })
+      res.writeHead(416, {'Content-Range': `bytes */${fileSize}`})
       return res.end()
     }
 
     const chunkSize = end - start + 1
     res.writeHead(206, {
-      'Content-Range'               : `bytes ${start}-${end}/${fileSize}`,
-      'Accept-Ranges'               : 'bytes',
-      'Content-Length'              : chunkSize,
-      'Content-Type'                : mimeType,
-      'Access-Control-Allow-Origin' : '*',
+      'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+      'Accept-Ranges': 'bytes',
+      'Content-Length': chunkSize,
+      'Content-Type': mimeType,
+      'Access-Control-Allow-Origin': '*',
+      'Cache-Control': 'public, max-age=3600',
     })
-    const stream = fs.createReadStream(absPath, { start, end })
+    const stream = fs.createReadStream(absPath, {start, end})
     stream.pipe(res)
     stream.on('error', () => res.end())
     return
   }
 
-  // ── 完整文件下载 ─────────────────────────────────────────────────
-  // Content-Disposition: attachment 触发浏览器「另存为」对话框
-  // filename* 使用 RFC 5987 编码，支持中文文件名
+  // ── 完整文件响应（m4a/aac 必须走这里，其他格式非 Range 请求也走这里）──
   const encodedName = encodeURIComponent(fileName).replace(/'/g, "%27")
-  // filename= 只能含 ASCII 可见字符，中文等非 ASCII 字符会导致 ERR_INVALID_CHAR
-  // 用 ASCII 安全的占位名 + filename*=UTF-8'' 编码名并存，兼容所有客户端
   const asciiFallback = encodeURIComponent(fileName).replace(/%[0-9A-Fa-f]{2}/g, '_')
+
+  // m4a/aac 不声明 Accept-Ranges，防止浏览器发 Range 请求
+  const extraHeaders = NO_RANGE_EXTS.has(ext) ? {} : {'Accept-Ranges': 'bytes'}
+
   res.writeHead(200, {
-    'Content-Type'                : mimeType,
-    'Content-Length'              : fileSize,
-    'Accept-Ranges'               : 'bytes',
-    'Content-Disposition'         : `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encodedName}`,
-    'Access-Control-Allow-Origin' : '*',
-    'Cache-Control'               : 'no-cache',
+    'Content-Type': mimeType,
+    'Content-Length': fileSize,
+    'Content-Disposition': `inline; filename="${asciiFallback}"; filename*=UTF-8''${encodedName}`,
+    'Access-Control-Allow-Origin': '*',
+    'Cache-Control': 'public, max-age=3600',
+    ...extraHeaders,
   })
   const stream = fs.createReadStream(absPath)
   stream.pipe(res)
@@ -326,18 +350,18 @@ const handleDownload = (req, res, query) => {
 
 /** 根据扩展名返回 MIME 类型 */
 const getMimeType = (ext) => ({
-  '.mp3'  : 'audio/mpeg',
-  '.flac' : 'audio/flac',
-  '.wav'  : 'audio/wav',
-  '.aac'  : 'audio/aac',
-  '.ogg'  : 'audio/ogg',
-  '.m4a'  : 'audio/mp4',
-  '.opus' : 'audio/opus',
-  '.wma'  : 'audio/x-ms-wma',
-  '.ape'  : 'audio/ape',
-  '.alac' : 'audio/alac',
-  '.lrc'  : 'text/plain; charset=utf-8',
-  '.txt'  : 'text/plain; charset=utf-8',
+  '.mp3': 'audio/mpeg',
+  '.flac': 'audio/flac',
+  '.wav': 'audio/wav',
+  '.aac': 'audio/aac',
+  '.ogg': 'audio/ogg',
+  '.m4a': 'audio/mp4',
+  '.opus': 'audio/opus',
+  '.wma': 'audio/x-ms-wma',
+  '.ape': 'audio/ape',
+  '.alac': 'audio/alac',
+  '.lrc': 'text/plain; charset=utf-8',
+  '.txt': 'text/plain; charset=utf-8',
 }[ext] || 'application/octet-stream')
 
 // ─── 收藏接口 ──────────────────────────────────────────────────────────────────
@@ -348,7 +372,7 @@ const FAVORITE_FILE = path.resolve(process.cwd(), 'data', 'favorite.json')
 /** 确保 data 目录存在 */
 const ensureDataDir = () => {
   const dir = path.dirname(FAVORITE_FILE)
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, {recursive: true})
 }
 
 /** 读取收藏列表，返回数组（失败返回空数组） */
@@ -358,7 +382,9 @@ const readFavorites = () => {
     const raw = fs.readFileSync(FAVORITE_FILE, 'utf-8')
     const parsed = JSON.parse(raw)
     return Array.isArray(parsed) ? parsed : []
-  } catch { return [] }
+  } catch {
+    return []
+  }
 }
 
 /** 写入收藏列表 */
@@ -374,10 +400,14 @@ const writeFavorites = (list) => {
  */
 const handleFavoriteAdd = (req, res) => {
   let body = ''
-  req.on('data', chunk => { body += chunk })
+  req.on('data', chunk => {
+    body += chunk
+  })
   req.on('end', () => {
     let song
-    try { song = JSON.parse(body) } catch {
+    try {
+      song = JSON.parse(body)
+    } catch {
       return sendError(res, 400, '请求体不是合法 JSON')
     }
     if (!song || typeof song !== 'object' || !song.name) {
@@ -389,7 +419,7 @@ const handleFavoriteAdd = (req, res) => {
     // 最新添加放最前面
     deduped.unshift(song)
     writeFavorites(deduped)
-    sendJSON(res, 200, { success: true, total: deduped.length })
+    sendJSON(res, 200, {success: true, total: deduped.length})
   })
 }
 
@@ -399,19 +429,23 @@ const handleFavoriteAdd = (req, res) => {
  */
 const handleFavoriteRemove = (req, res) => {
   let body = ''
-  req.on('data', chunk => { body += chunk })
+  req.on('data', chunk => {
+    body += chunk
+  })
   req.on('end', () => {
     let payload
-    try { payload = JSON.parse(body) } catch {
+    try {
+      payload = JSON.parse(body)
+    } catch {
       return sendError(res, 400, '请求体不是合法 JSON')
     }
     const list = readFavorites()
     const after = list.filter(f =>
-      payload.url  ? f.url  !== payload.url
-                   : f.name !== payload.name
+      payload.url ? f.url !== payload.url
+        : f.name !== payload.name
     )
     writeFavorites(after)
-    sendJSON(res, 200, { success: true, total: after.length })
+    sendJSON(res, 200, {success: true, total: after.length})
   })
 }
 
@@ -421,7 +455,7 @@ const handleFavoriteRemove = (req, res) => {
  */
 const handleFavoriteData = (req, res) => {
   const list = readFavorites()
-  sendJSON(res, 200, { success: true, total: list.length, data: list })
+  sendJSON(res, 200, {success: true, total: list.length, data: list})
 }
 
 // ─── HTTP 服务器 ──────────────────────────────────────────────────────────────
@@ -430,40 +464,43 @@ const server = http.createServer((req, res) => {
   // CORS 预检
   if (req.method === 'OPTIONS') {
     res.writeHead(204, {
-      'Access-Control-Allow-Origin'  : '*',
-      'Access-Control-Allow-Methods' : 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers' : 'Range, Content-Type',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Range, Content-Type',
     })
     return res.end()
   }
 
   // 解析 URL
   let url
-  try { url = new URL(req.url, `http://${HOST}:${PORT}`) }
-  catch { return sendError(res, 400, '无效的 URL') }
+  try {
+    url = new URL(req.url, `http://${HOST}:${PORT}`)
+  } catch {
+    return sendError(res, 400, '无效的 URL')
+  }
 
-  const { pathname, searchParams } = url
+  const {pathname, searchParams} = url
 
-  console.log(`[${new Date().toLocaleTimeString()}] ${req.method} ${pathname}  ${[...searchParams].map(([k,v])=>`${k}=${v}`).join('&')}`)
+  console.log(`[${new Date().toLocaleTimeString()}] ${req.method} ${pathname}  ${[...searchParams].map(([k, v]) => `${k}=${v}`).join('&')}`)
 
   // ── GET 路由 ────────────────────────────────────────────────────
   if (req.method === 'GET') {
-    if (pathname === '/api/files')      return handleFiles(req, res, searchParams)
-    if (pathname === '/api/download')   return handleDownload(req, res, searchParams)
-    if (pathname === '/favorite/data')  return handleFavoriteData(req, res)
+    if (pathname === '/api/files') return handleFiles(req, res, searchParams)
+    if (pathname === '/api/download') return handleDownload(req, res, searchParams)
+    if (pathname === '/favorite/data') return handleFavoriteData(req, res)
 
     // 根路径返回接口说明
     if (pathname === '/') {
       return sendJSON(res, 200, {
-        name    : 'StarMusicPlayer API Server',
-        version : '1.1.0',
-        root    : ROOT_DIR,
-        routes  : [
-          { method:'GET',  path:'/api/files',       description:'递归扫描目录，返回文件树 JSON' },
-          { method:'GET',  path:'/api/download',    description:'下载或流式播放指定文件，支持 Range' },
-          { method:'GET',  path:'/favorite/data',   description:'返回收藏列表数组（最新在前）' },
-          { method:'POST', path:'/favorite/add',    description:'添加歌曲到收藏（自动去重，最新在前）' },
-          { method:'POST', path:'/favorite/remove', description:'从收藏中移除歌曲（按 url 或 name 匹配）' },
+        name: 'StarMusicPlayer API Server',
+        version: '1.1.0',
+        root: ROOT_DIR,
+        routes: [
+          {method: 'GET', path: '/api/files', description: '递归扫描目录，返回文件树 JSON'},
+          {method: 'GET', path: '/api/download', description: '下载或流式播放指定文件，支持 Range'},
+          {method: 'GET', path: '/favorite/data', description: '返回收藏列表数组（最新在前）'},
+          {method: 'POST', path: '/favorite/add', description: '添加歌曲到收藏（自动去重，最新在前）'},
+          {method: 'POST', path: '/favorite/remove', description: '从收藏中移除歌曲（按 url 或 name 匹配）'},
         ],
       })
     }
@@ -473,7 +510,7 @@ const server = http.createServer((req, res) => {
 
   // ── POST 路由 ───────────────────────────────────────────────────
   if (req.method === 'POST') {
-    if (pathname === '/favorite/add')    return handleFavoriteAdd(req, res)
+    if (pathname === '/favorite/add') return handleFavoriteAdd(req, res)
     if (pathname === '/favorite/remove') return handleFavoriteRemove(req, res)
     return sendError(res, 404, `未知路由: ${pathname}`)
   }
