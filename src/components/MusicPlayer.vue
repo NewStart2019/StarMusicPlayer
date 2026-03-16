@@ -262,7 +262,7 @@ const showPlayer = ref(false)
 const isPlaying = ref(false)
 const currentTime = ref(0)
 const duration = ref(0)
-const volume = ref(0.8)
+const volume = ref(parseFloat(localStorage.getItem('sm-volume') ?? '0.8'))
 const isDragging = ref(false)
 const favorites = ref(new Set())
 const lyrics = ref([])
@@ -405,9 +405,9 @@ const hasAudioInFolder = (folder) => {
 // =============================================
 // 服务器模式
 // =============================================
-const serverBase = ref('')   // 连接成功后存储 server base URL，供收藏接口使用
-const connectServer = async ({url}) => {
-  const base = url.replace(/\/$/, '')
+const serverBase = ref(window.location.origin)  // 默认当前域名，无需手动输入
+const connectServer = async ({url} = {}) => {
+  const base = (url || window.location.origin).replace(/\/$/, '')
   fileBrowserRef.value?.setServerLoading(true)
   fileBrowserRef.value?.setServerError('')
   try {
@@ -485,14 +485,7 @@ const disconnectServer = () => {
 }
 
 const refreshServer = () => {
-  // 重新拉取：遍历 serverTree 找根节点 url 前缀
-  const firstAudio = findFirstAudio(serverTree.value)
-  if (!firstAudio?.url) return
-  try {
-    const u = new URL(firstAudio.url)
-    connectServer({url: `${u.protocol}//${u.host}`})
-  } catch { /* 无法解析则忽略 */
-  }
+  connectServer({url: serverBase.value || window.location.origin})
 }
 const findFirstAudio = (node) => {
   if (!node) return null
@@ -732,6 +725,16 @@ const loadAndPlay = async (index) => {
   const song = playlist.value[index]
   const audio = audioRef.value
 
+  // 移动端 autoplay policy：必须在用户手势的同步调用栈内调用 play()
+  // 在任何 await 之前先触发一次 play()，解锁媒体播放权限，然后立即 pause
+  try {
+    const unlockPromise = audio.play()
+    audio.pause()
+    if (unlockPromise) unlockPromise.catch(() => {
+    })
+  } catch (_) { /* 忽略解锁失败 */
+  }
+
   // 先等正在进行的 play() resolve，再 pause，避免 AbortError
   if (_playPromise) {
     try {
@@ -882,14 +885,14 @@ const toggleFavorite = async () => {
     try {
       if (!wasFav) {
         // 添加收藏
-        await fetch(`${serverBase.value}/favorite/add`, {
+        await fetch(`/api/favorite/add`, {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify(song),
         })
       } else {
         // 取消收藏
-        await fetch(`${serverBase.value}/favorite/remove`, {
+        await fetch(`/api/favorite/remove`, {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({url: song.url, name: song.name}),
@@ -908,14 +911,14 @@ const favLoading = ref(false)
 const favError = ref('')
 
 const loadFavorites = async () => {
-  if (!serverBase.value) {
+  if (sourceMode.value !== 'server') {
     favError.value = '请先连接服务器';
     return
   }
   favLoading.value = true;
   favError.value = ''
   try {
-    const res = await fetch(`${serverBase.value}/favorite/data`)
+    const res = await fetch(`/api/favorite/data`)
     const data = await res.json()
     if (data.success) {
       favoritesList.value = data.data
@@ -1078,6 +1081,7 @@ const stopDrag = () => {
 const onVolumeChange = (event) => {
   volume.value = parseFloat(event.target.value)
   if (audioRef.value) audioRef.value.volume = volume.value
+  localStorage.setItem('sm-volume', volume.value)
 }
 
 // =============================================

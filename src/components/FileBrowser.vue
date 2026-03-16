@@ -1,5 +1,5 @@
 <script setup>
-import {ref, computed, watch} from 'vue'
+import {computed, ref, watch} from 'vue'
 
 const props = defineProps({
   hasFolder: {type: Boolean, required: true},
@@ -27,7 +27,6 @@ const emit = defineEmits([
 const searchQuery = ref('')
 const showThemePicker = ref(false)
 const showServerPanel = ref(false)
-const serverUrl = ref(`http://${window.location.hostname}:8080`)
 const serverLoading = ref(false)
 const serverError = ref('')
 const fileInputRef = ref(null)
@@ -76,7 +75,7 @@ watch(showThemePicker, (v) => {
 /* ── 动作 ─────────────────────────────────── */
 const handleConnect = () => {
   serverError.value = ''
-  emit('connect-server', {url: serverUrl.value})
+  emit('connect-server', {})
 }
 const handleFolderSelect = (e) => {
   showServerPanel.value = false
@@ -187,38 +186,28 @@ watch(showThemePicker, (v) => {
           <div class="vinyl-center"></div>
         </div>
         <h1 class="welcome-title">开始你的音乐之旅</h1>
-        <p class="welcome-sub">选择本地文件夹，或连接音乐服务器</p>
+        <p class="welcome-sub">选择本地文件，或聆听线上音乐</p>
 
         <div class="welcome-btns">
           <button class="btn-select" @click="fileInputRef.click()">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
             </svg>
-            本地文件夹
+            本地文件
           </button>
-          <button class="btn-server" @click="showServerPanel = !showServerPanel">
+          <button class="btn-server" @click="handleConnect" :disabled="serverLoading">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="2" y="2" width="20" height="8" rx="2"/>
-              <rect x="2" y="14" width="20" height="8" rx="2"/>
-              <line x1="6" y1="6" x2="6.01" y2="6"/>
-              <line x1="6" y1="18" x2="6.01" y2="18"/>
+              <path d="M9 18V5l12-2v13"/>
+              <circle cx="6" cy="18" r="3"/>
+              <circle cx="18" cy="16" r="3"/>
             </svg>
-            连接服务器
+            <span v-if="serverLoading" class="sp-loading"
+                  style="width:14px;height:14px;border-radius:50%;border:2px solid rgba(255,255,255,0.3);border-top-color:#fff;animation:spin 0.7s linear infinite;display:inline-block"></span>
+            <span v-else>聆听音乐</span>
           </button>
         </div>
 
-        <div v-if="showServerPanel" class="server-panel">
-          <div class="sp-title">服务器地址</div>
-          <div class="sp-row">
-            <input v-model="serverUrl" class="sp-input" placeholder="http://localhost:3000"
-                   @keydown.enter="handleConnect"/>
-            <button class="sp-btn" :disabled="serverLoading" @click="handleConnect">
-              <span v-if="serverLoading" class="sp-loading"></span>
-              <span v-else>连接</span>
-            </button>
-          </div>
-          <p v-if="serverError" class="sp-error">{{ serverError }}</p>
-        </div>
+        <p v-if="serverError" class="sp-error" style="margin-top:12px">{{ serverError }}</p>
 
         <p v-if="errorMsg" class="error-msg">{{ errorMsg }}</p>
       </div>
@@ -326,6 +315,7 @@ watch(showThemePicker, (v) => {
     </div>
 
     <input ref="fileInputRef" type="file" webkitdirectory multiple style="display:none"
+           accept=".mp3,.flac,.wav,.aac,.ogg,.m4a,.opus,.wma,.ape,.alac,.lrc"
            @change="handleFolderSelect"/>
   </div>
 </template>
@@ -796,22 +786,6 @@ watch(showThemePicker, (v) => {
   gap: 8px;
 }
 
-.sp-input {
-  flex: 1;
-  padding: 9px 14px;
-  border-radius: 8px;
-  border: 1px solid var(--t-border);
-  background: var(--t-overlay);
-  color: var(--t-text);
-  font-size: 0.88rem;
-  font-family: inherit;
-  outline: none;
-}
-
-.sp-input:focus {
-  border-color: var(--t-accent1);
-}
-
 .sp-btn {
   padding: 9px 18px;
   border-radius: 8px;
@@ -993,7 +967,7 @@ watch(showThemePicker, (v) => {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 4px 0 16px;
+  padding: 4px 0 24px;
 }
 
 .file-row {
