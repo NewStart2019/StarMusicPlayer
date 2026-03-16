@@ -168,22 +168,23 @@ onUnmounted(() => window.removeEventListener('resize', checkMobile))
 </template>
 
 <style scoped>
-/* ── 主体 ───────────────────────────────────── */
+/* ══ MiniBar ══════════════════════════════════════════════ */
 .minibar {
   position: fixed;
   bottom: 0;
   left: 0;
   right: 0;
   z-index: 90;
-  background: color-mix(in srgb, var(--t-bg) 88%, transparent);
-  backdrop-filter: blur(24px) saturate(1.4);
-  border-top: 1px solid var(--t-border);
-  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.18);
+  background: color-mix(in srgb, var(--t-bg) 82%, transparent);
+  backdrop-filter: blur(32px) saturate(1.6);
+  border-top: 1px solid color-mix(in srgb, var(--t-border) 80%, transparent);
+  box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.22), 0 -1px 0 color-mix(in srgb, var(--t-accent1) 15%, transparent);
 }
 
+/* 进度条 */
 .minibar-progress {
-  height: 2px;
-  background: var(--t-overlay);
+  height: 3px;
+  background: color-mix(in srgb, var(--t-border) 60%, transparent);
   position: relative;
 }
 
@@ -194,31 +195,33 @@ onUnmounted(() => window.removeEventListener('resize', checkMobile))
   background: var(--t-progress);
   transition: width 0.4s linear;
   border-radius: 999px;
+  box-shadow: 0 0 8px color-mix(in srgb, var(--t-accent1) 60%, transparent);
 }
 
 .minibar-inner {
   display: flex;
   align-items: center;
-  padding: 0 20px;
+  padding: 0 24px;
   height: 68px;
   gap: 0;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
-/* ── 左侧 ───────────────────────────────────── */
+/* 左：封面碟 + 信息 */
 .minibar-left {
   display: flex;
   align-items: center;
-  gap: 12px;
-  width: 260px;
+  gap: 14px;
+  width: 280px;
   min-width: 0;
   cursor: pointer;
   flex-shrink: 0;
 }
 
 .mini-disc {
-  width: 42px;
-  height: 42px;
-  border-radius: 50%;
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
   flex-shrink: 0;
   background: var(--t-disc-bg);
   border: 1px solid var(--t-disc-border);
@@ -226,12 +229,13 @@ onUnmounted(() => window.removeEventListener('resize', checkMobile))
   align-items: center;
   justify-content: center;
   color: var(--t-text3);
-  transition: box-shadow 0.4s;
+  transition: box-shadow 0.4s, transform 0.3s;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
 }
 
 .mini-disc.spinning {
-  animation: discSpin 6s linear infinite;
-  box-shadow: 0 0 14px var(--t-disc-glow);
+  animation: discSpin 8s linear infinite;
+  box-shadow: 0 0 20px var(--t-disc-glow), 0 4px 20px rgba(0, 0, 0, 0.3);
 }
 
 @keyframes discSpin {
@@ -241,40 +245,44 @@ onUnmounted(() => window.removeEventListener('resize', checkMobile))
 }
 
 .mini-disc svg {
-  width: 18px;
-  height: 18px;
+  width: 22px;
+  height: 22px;
+}
+
+.minibar-left:hover .mini-disc {
+  transform: scale(1.05);
 }
 
 .mini-info {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
   min-width: 0;
 }
 
 .mini-title {
-  font-size: 0.88rem;
-  font-weight: 600;
+  font-size: 0.92rem;
+  font-weight: 700;
   color: var(--t-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 180px;
+  max-width: 190px;
 }
 
 .mini-artist {
   font-size: 0.72rem;
   color: var(--t-text3);
-  letter-spacing: 1px;
+  letter-spacing: 0.5px;
 }
 
-/* ── 中间控制 ───────────────────────────────── */
+/* 中：控制 */
 .minibar-center {
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .mb-btn {
@@ -287,19 +295,19 @@ onUnmounted(() => window.removeEventListener('resize', checkMobile))
   align-items: center;
   justify-content: center;
   transition: all 0.2s;
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
 }
 
 .mb-btn svg {
-  width: 16px;
-  height: 16px;
+  width: 17px;
+  height: 17px;
 }
 
 .mb-btn:hover {
   color: var(--t-text);
   background: var(--t-overlay);
-  transform: scale(1.1);
+  transform: scale(1.12);
 }
 
 .mb-btn.active {
@@ -311,21 +319,23 @@ onUnmounted(() => window.removeEventListener('resize', checkMobile))
 }
 
 .mb-play {
-  width: 44px;
-  height: 44px;
+  width: 48px !important;
+  height: 48px !important;
   background: var(--t-play-bg) !important;
   color: #fff !important;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  border-radius: 50% !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35), 0 0 0 0 color-mix(in srgb, var(--t-accent1) 30%, transparent);
+  transition: all 0.22s !important;
 }
 
 .mb-play svg {
-  width: 20px;
-  height: 20px;
+  width: 22px !important;
+  height: 22px !important;
 }
 
 .mb-play:hover {
-  transform: scale(1.1);
-  box-shadow: 0 6px 20px color-mix(in srgb, var(--t-accent1) 50%, transparent);
+  transform: scale(1.1) !important;
+  box-shadow: 0 6px 24px color-mix(in srgb, var(--t-accent1) 55%, transparent) !important;
 }
 
 .mb-list {
@@ -338,11 +348,11 @@ onUnmounted(() => window.removeEventListener('resize', checkMobile))
 
 .pl-badge {
   position: absolute;
-  top: 0;
-  right: 0;
-  min-width: 16px;
-  height: 16px;
-  border-radius: 8px;
+  top: -2px;
+  right: -4px;
+  min-width: 17px;
+  height: 17px;
+  border-radius: 9px;
   background: var(--t-accent1);
   color: white;
   font-size: 0.6rem;
@@ -350,16 +360,17 @@ onUnmounted(() => window.removeEventListener('resize', checkMobile))
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0 3px;
+  padding: 0 4px;
   pointer-events: none;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
 }
 
-/* ── 右侧 ───────────────────────────────────── */
+/* 右：音量 + 定时 + 列表 */
 .minibar-right {
   display: flex;
   align-items: center;
   gap: 10px;
-  width: 260px;
+  width: 280px;
   justify-content: flex-end;
   flex-shrink: 0;
 }
@@ -379,29 +390,40 @@ onUnmounted(() => window.removeEventListener('resize', checkMobile))
 
 .mini-vol-slider {
   -webkit-appearance: none;
-  width: 88px;
+  width: 90px;
   height: 3px;
   border-radius: 999px;
-  background: var(--t-border);
+  background: linear-gradient(to right, var(--t-accent1) calc(var(--val, 80) * 1%), var(--t-border) calc(var(--val, 80) * 1%));
   outline: none;
   cursor: pointer;
 }
 
 .mini-vol-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
-  width: 12px;
-  height: 12px;
+  width: 13px;
+  height: 13px;
   border-radius: 50%;
   background: var(--t-accent1);
   cursor: pointer;
-  box-shadow: 0 0 6px var(--t-disc-glow);
+  box-shadow: 0 0 8px var(--t-disc-glow);
+  transition: transform 0.15s;
 }
 
-/* ── 响应式 ─────────────────────────────────── */
+.mini-vol-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.25);
+}
+
+/* 响应式 */
 @media (max-width: 640px) {
+  .minibar-inner {
+    padding: 0 16px;
+    height: 68px;
+  }
+
   .minibar-left {
     width: auto;
     flex: 1;
+    gap: 11px;
   }
 
   .minibar-right {
@@ -418,6 +440,17 @@ onUnmounted(() => window.removeEventListener('resize', checkMobile))
 
   .mb-fav {
     display: none;
+  }
+
+  .mini-disc {
+    width: 46px;
+    height: 46px;
+    border-radius: 10px;
+  }
+
+  .mini-title {
+    font-size: 0.87rem;
+    max-width: 150px;
   }
 }
 </style>
