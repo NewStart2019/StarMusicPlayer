@@ -109,49 +109,100 @@ const LYRIC_BASE_STYLE = [
   ['webkitTextFillColor', 'transparent'],
 ]
 
-const applyLyricStyles = (newIdx, oldIdx) => {
+const lastLyricState = ref({idx: -1, progress: 0})
+
+const lyricProgress = (idx) => {
+  if (idx < 0 || idx >= props.lyrics.length) return 0
+  const cur = props.lyrics[idx]
+  const nxt = props.lyrics[idx + 1]
+  const dur = nxt ? Math.max(0.3, nxt.time - cur.time) : 5
+  const elapsed = Math.max(0, (props.currentTime ?? 0) - cur.time)
+  return dur > 0 ? Math.min(1, elapsed / dur) : 0
+}
+
+// 首次激活或切换行时重置样式
+const applyLyricStyles = (newIdx) => {
   const containers = [lyricsContainerRef.value, mobileLyricsRef.value]
   containers.forEach(container => {
     if (!container) return
     const lines = container.querySelectorAll('.lyric-line')
-
-    // 清除旧 active 行（如果存在且不是 prev）
-    if (oldIdx >= 0 && oldIdx < lines.length) {
-      // 旧行变成 prev：立即设为 100% 全亮，无 transition
-      const oldEl = lines[oldIdx]
-      oldEl.style.transition = 'none'
-      LYRIC_BASE_STYLE.forEach(([k, v]) => {
-        oldEl.style[k] = v
-      })
-      oldEl.style.backgroundSize = '100% 100%'
-    }
-
-    // 新 active 行
-    if (newIdx >= 0 && newIdx < lines.length) {
-      const el = lines[newIdx]
-      const cur = props.lyrics[newIdx]
-      const nxt = props.lyrics[newIdx + 1]
-      const dur = nxt ? Math.max(0.3, nxt.time - cur.time) : 5
-
-      // 先关 transition，立刻把 background-size 设为 0%
+    lines.forEach((el, i) => {
       el.style.transition = 'none'
-      LYRIC_BASE_STYLE.forEach(([k, v]) => {
-        el.style[k] = v
-      })
-      el.style.backgroundSize = '0% 100%'
-
-      // 强制浏览器 flush 布局，再开 transition 触发动画
-      void el.offsetWidth
-
-      el.style.transition = `background-size ${dur}s linear`
-      el.style.backgroundSize = '100% 100%'
-    }
+      if (i < newIdx) {
+        LYRIC_BASE_STYLE.forEach(([k, v]) => el.style[k] = v)
+        el.style.backgroundSize = '100% 100%'
+      } else if (i === newIdx) {
+        const p = lyricProgress(i)
+        LYRIC_BASE_STYLE.forEach(([k, v]) => el.style[k] = v)
+        el.style.backgroundSize = `${p * 100}% 100%`
+        const cur = props.lyrics[i]
+        const nxt = props.lyrics[i + 1]
+        const dur = nxt ? Math.max(0.3, nxt.time - cur.time) : 5
+        const remain = Math.max(0.1, dur * (1 - p))
+        void el.offsetWidth
+        el.style.transition = `background-size ${remain}s linear`
+        el.style.backgroundSize = '100% 100%'
+      } else {
+        // 清空未来行样式
+        el.style.backgroundImage = ''
+        el.style.backgroundRepeat = ''
+        el.style.backgroundSize = ''
+        el.style.backgroundClip = ''
+        el.style.webkitBackgroundClip = ''
+        el.style.webkitTextFillColor = ''
+      }
+    })
   })
 }
 
-watch(() => props.currentLyricIndex, async (newIdx, oldIdx) => {
+// 播放进度更新时同步当前行填充，无动画，实时跟随音频
+const syncActiveLyricProgress = () => {
+  const idx = props.currentLyricIndex
+  if (idx < 0) return
+  const p = lyricProgress(idx)
+  const containers = [lyricsContainerRef.value, mobileLyricsRef.value]
+  containers.forEach(container => {
+    if (!container) return
+    const lines = container.querySelectorAll('.lyric-line')
+    const el = lines[idx]
+    if (!el) return
+    LYRIC_BASE_STYLE.forEach(([k, v]) => el.style[k] = v)
+    el.style.transition = 'none'
+    el.style.backgroundSize = `${p * 100}% 100%`
+  })
+}
+
+watch(() => props.currentLyricIndex, async (newIdx) => {
   await nextTick()
-  applyLyricStyles(newIdx, oldIdx ?? -1)
+  applyLyricStyles(newIdx ?? -1)
+  lastLyricState.value = {idx: newIdx ?? -1, progress: lyricProgress(newIdx ?? -1)}
+})
+
+// 同一行内若出现大跳跃（拖动进度），重新应用起始进度并重新过渡
+watch(() => props.currentTime, () => {
+  const idx = props.currentLyricIndex
+  if (idx < 0) return
+  const p = lyricProgress(idx)
+  const {idx: lastIdx, progress: lastP} = lastLyricState.value
+  if (idx !== lastIdx || Math.abs(p - lastP) > 0.25) {
+    applyLyricStyles(idx)
+  }
+  lastLyricState.value = {idx, progress: p}
+})
+
+// 打开歌词抽屉时，立即滚动到当前行
+watch(showLyrics, async (v) => {
+  if (!v) return
+  await nextTick()
+  const scrollToActive = (container) => {
+    if (!container) return
+    const el = container.querySelector('.lyric-line.active')
+    if (el) container.scrollTo({
+      top: el.offsetTop - container.clientHeight / 2 + el.clientHeight / 2,
+      behavior: 'auto'
+    })
+  }
+  scrollToActive(mobileLyricsRef.value)
 })
 
 // 切歌时重置所有歌词行样式
@@ -547,6 +598,7 @@ watch(() => props.lyrics, async () => {
                 </div>
                 <p>暂无歌词</p>
               </div>
+              <button class="m-sheet-close" @click="showLyrics=false">关闭歌词</button>
             </div>
           </div>
         </Transition>
@@ -1514,10 +1566,10 @@ input[type="range"]::-moz-range-track {
 
   .m-sheet {
     width: 100%;
-    height: 72vh;
+    height: 100vh;
     background: color-mix(in srgb, var(--t-bg) 96%, white);
     border-top: 1px solid var(--t-border);
-    border-radius: 22px 22px 0 0;
+    border-radius: 0;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -1546,6 +1598,18 @@ input[type="range"]::-moz-range-track {
   .m-sheet-x svg {
     width: 16px;
     height: 16px
+  }
+
+  .m-sheet-close {
+    width: 100%;
+    padding: 14px 0;
+    background: color-mix(in srgb, var(--t-bg-glass) 85%, var(--t-bg));
+    color: var(--t-text);
+    border: none;
+    border-top: 1px solid var(--t-border);
+    font-size: .95rem;
+    letter-spacing: 1px;
+    cursor: pointer;
   }
 
   .m-lyr-scroll {

@@ -1484,8 +1484,7 @@ onUnmounted(() => {
 .bg-grid {
   position: absolute;
   inset: 0;
-  background-image: linear-gradient(var(--t-grid) 1px, transparent 1px), linear-gradient(90deg, var(--t-grid) 1px, transparent 1px);
-  background-size: 60px 60px;
+  background: none;
   pointer-events: none;
 }
 
