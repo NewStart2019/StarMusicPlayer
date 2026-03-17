@@ -1,7 +1,8 @@
 <script setup>
-import {computed, nextTick, onMounted, onUnmounted, ref, watch} from 'vue'
-import {findCurrentLyricIndex, parseLRC} from '../utils/lrcParser.js'
-import {parseM4AMetadata, parsePlainLyrics} from '../utils/m4aMetadata.js'
+import {ref, computed, watch, onMounted, onUnmounted, nextTick} from 'vue'
+import {parseLRC, findCurrentLyricIndex} from '../utils/lrcParser.js'
+import {parseAudioMetadata} from '../utils/audioMetadata.js'
+import {parsePlainLyrics} from '../utils/m4aMetadata.js'
 import FileBrowser from './FileBrowser.vue'
 import PlayerView from './PlayerView.vue'
 import MiniBar from './MiniBar.vue'
@@ -267,7 +268,8 @@ const volume = ref(parseFloat(localStorage.getItem('sm-volume') ?? '0.8'))
 const isDragging = ref(false)
 const favorites = ref(new Set())
 const lyrics = ref([])
-const m4aMeta = ref(null)  // 当前 m4a 文件的内嵌元数据
+const audioMeta = ref(null)  // 当前曲目的完整元数据
+const audioFileSize = ref(0)     // 文件字节数
 const currentLyricIndex = ref(-1)
 const albumRotation = ref(0)
 const audioRef = ref(null)
@@ -319,14 +321,14 @@ const songTitle = computed(() =>
 const artistName = computed(() => {
   // 优先级：export.json > m4a 内嵌 > 文件名解析
   if (currentSong.value?.metaArtist) return currentSong.value.metaArtist
-  if (m4aMeta.value?.artist) return m4aMeta.value.artist
+  if (audioMeta.value?.artist) return audioMeta.value.artist
   const i = songTitle.value.indexOf(' - ')
   return i > 0 ? songTitle.value.substring(0, i) : '未知艺术家'
 })
 const displayTitle = computed(() => {
   // 优先级：export.json > m4a 内嵌 > 文件名解析
   if (currentSong.value?.metaTitle) return currentSong.value.metaTitle
-  if (m4aMeta.value?.title) return m4aMeta.value.title
+  if (audioMeta.value?.title) return audioMeta.value.title
   const i = songTitle.value.indexOf(' - ')
   return i > 0 ? songTitle.value.substring(i + 3) : songTitle.value
 })
@@ -835,7 +837,8 @@ const applyLyricsText = (text) => {
 const loadLyrics = async (song) => {
   lyrics.value = [];
   currentLyricIndex.value = -1
-  m4aMeta.value = null
+  audioMeta.value = null
+  audioFileSize.value = 0
 
   // ── 第1优先：外部 .lrc 文件 ─────────────────────────────────────
   if (song.source === 'server') {
@@ -873,20 +876,24 @@ const loadLyrics = async (song) => {
     if (applyLyricsText(song.metaLyrics)) return
   }
 
-  // ── 第3优先：m4a 内嵌元数据（只对 m4a/aac 格式）────────────────
+  // ── 第3优先：音频内嵌元数据（所有格式）────────────────────────
   const ext = song.name.substring(song.name.lastIndexOf('.')).toLowerCase()
-  if (MUST_PRELOAD_EXTS.has(ext)) {
+  if (true) {  // 全格式支持
     try {
       let buffer = null
       if (song.source === 'server') {
         const resp = await fetch(song.url)
-        if (resp.ok) buffer = await resp.arrayBuffer()
+        if (resp.ok) {
+          buffer = await resp.arrayBuffer()
+          audioFileSize.value = buffer.byteLength
+        }
       } else if (song.fileObj) {
         buffer = await song.fileObj.arrayBuffer()
+        audioFileSize.value = song.fileObj.size || buffer.byteLength
       }
       if (buffer) {
-        const meta = parseM4AMetadata(buffer)
-        m4aMeta.value = meta
+        const meta = parseAudioMetadata(buffer, song.name)
+        audioMeta.value = meta
         if (meta.lyrics) applyLyricsText(meta.lyrics)
       }
     } catch (e) {
@@ -1331,6 +1338,9 @@ onUnmounted(() => {
           ref="playerViewRef"
           :display-title="displayTitle"
           :artist-name="artistName"
+          :audio-meta="audioMeta"
+          :file-size="audioFileSize"
+          :current-filename="currentSong?.name || ''"
           :is-playing="isPlaying"
           :album-rotation="albumRotation"
           :current-time="currentTime"

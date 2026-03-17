@@ -2,6 +2,7 @@
 import {computed, nextTick, onMounted, onUnmounted, ref, watch} from 'vue'
 import SleepTimer from './SleepTimer.vue'
 import PlaylistPanel from './PlaylistPanel.vue'
+import MetadataPanel from './MetadataPanel.vue'
 
 /* ── props / emits ───────────────────────────── */
 const props = defineProps({
@@ -21,6 +22,9 @@ const props = defineProps({
   playMode: {type: String, default: 'order'},
   sleepMinutes: {type: Number, default: 0},
   sleepEndTime: {type: Number, default: 0},
+  audioMeta: {type: Object, default: null},
+  fileSize: {type: Number, default: 0},
+  currentFilename: {type: String, default: ''},
 })
 const emit = defineEmits([
   'close', 'toggle-play', 'prev', 'next',
@@ -41,6 +45,7 @@ defineExpose({progressBarRef, mobileProgressRef, lyricsContainerRef, mobileLyric
 /* ── UI state ────────────────────────────────── */
 const showPlaylist = ref(false)
 const showLyrics = ref(false)   // 手机歌词抽屉
+const showMeta = ref(false)   // 标签信息面板
 
 /* ── 移动端检测 ──────────────────────────────── */
 const isMobile = ref(false)
@@ -250,6 +255,14 @@ watch(() => props.lyrics, async () => {
               <circle cx="3" cy="18" r="1.5" fill="currentColor" stroke="none"/>
             </svg>
           </button>
+          <button class="ctrl-btn ctrl-info" :class="{ active:showMeta }" @click.stop="showMeta=!showMeta"
+                  title="查看标签信息">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="12" y1="8" x2="12" y2="8" stroke-width="2.5"/>
+              <line x1="12" y1="11" x2="12" y2="17"/>
+            </svg>
+          </button>
         </div>
         <div class="secondary-row">
           <div class="volume-row">
@@ -298,6 +311,17 @@ watch(() => props.lyrics, async () => {
             @click="emit('load-index',dotStart(i))"></span>
         </div>
       </div>
+
+      <!-- ══════════════ 桌面标签信息面板 ══════════════ -->
+      <MetadataPanel
+          v-if="!isMobile"
+          :show="showMeta"
+          :meta="audioMeta"
+          :filename="currentFilename"
+          :file-size="fileSize"
+          mode="side"
+          @close="showMeta=false"
+      />
 
       <!-- ══════════════ 桌面右侧歌词 ══════════════ -->
       <div class="player-right desktop-lyrics">
@@ -454,6 +478,14 @@ watch(() => props.lyrics, async () => {
             </svg>
             <span>歌词</span>
           </button>
+          <button class="m-tool" :class="{ active:showMeta }" @click.stop="showMeta=!showMeta">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="12" y1="8" x2="12" y2="8" stroke-width="2.5"/>
+              <line x1="12" y1="11" x2="12" y2="17"/>
+            </svg>
+            <span>信息</span>
+          </button>
           <!-- 音量：图标 + 滑块（紧凑横向布局） -->
           <div class="m-vol-bar">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="m-vol-ico">
@@ -518,6 +550,17 @@ watch(() => props.lyrics, async () => {
             </div>
           </div>
         </Transition>
+
+        <!-- 标签信息面板（手机底部弹出） -->
+        <MetadataPanel
+            v-if="isMobile"
+            :show="showMeta"
+            :meta="audioMeta"
+            :filename="currentFilename"
+            :file-size="fileSize"
+            mode="sheet"
+            @close="showMeta=false"
+        />
 
       </div><!-- /mobile-player -->
 
@@ -974,6 +1017,20 @@ input[type="range"]::-moz-range-track {
 
 .ctrl-mode:hover, .ctrl-mode.active {
   color: var(--t-accent2)
+}
+
+.ctrl-info {
+  width: 34px;
+  height: 34px
+}
+
+.ctrl-info svg {
+  width: 18px;
+  height: 18px
+}
+
+.ctrl-info:hover, .ctrl-info.active {
+  color: var(--t-accent3)
 }
 
 /* SECONDARY ROW */
