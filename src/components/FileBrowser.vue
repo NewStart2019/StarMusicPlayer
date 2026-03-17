@@ -1,5 +1,5 @@
 <script setup>
-import {computed, ref, watch} from 'vue'
+import {ref, computed, watch} from 'vue'
 
 const props = defineProps({
   hasFolder: {type: Boolean, required: true},
@@ -321,6 +321,66 @@ watch(showThemePicker, (v) => {
 </template>
 
 <style scoped>
+/* ── 跨浏览器重置：消除 Firefox/Safari 默认样式 ───────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+button {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  outline: none;
+  font-family: inherit;
+}
+
+button:focus-visible {
+  outline: 2px solid var(--t-accent1);
+  outline-offset: 2px;
+}
+
+input[type="text"], input[type="search"] {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  outline: none;
+}
+
+input[type="range"] {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  outline: none;
+}
+
+/* Firefox 对 input[type=range] 的轨道 */
+input[type="range"]::-moz-range-track {
+  height: 3px;
+  border-radius: 999px;
+  background: var(--t-border);
+  border: none;
+}
+
+input[type="range"]::-moz-range-thumb {
+  -moz-appearance: none;
+  appearance: none;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--t-accent1);
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 0 6px var(--t-disc-glow);
+}
+
+/* Safari/Firefox 对 select 的默认边框 */
+select {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  outline: none;
+}
+
 .browser-container {
   position: absolute;
   top: 0;
@@ -347,6 +407,7 @@ watch(showThemePicker, (v) => {
   min-height: 62px;
   border-bottom: 1px solid var(--t-border);
   background: var(--t-bg-glass, rgba(10, 10, 30, 0.88));
+  -webkit-backdrop-filter: blur(20px) saturate(1.3);
   backdrop-filter: blur(20px) saturate(1.3);
   flex-shrink: 0;
   gap: 16px;
@@ -530,6 +591,7 @@ watch(showThemePicker, (v) => {
   border-radius: 14px;
   padding: 8px;
   box-shadow: 0 20px 60px var(--t-shadow, rgba(0, 0, 0, 0.5));
+  -webkit-backdrop-filter: blur(20px);
   backdrop-filter: blur(20px);
 }
 
@@ -683,6 +745,7 @@ watch(showThemePicker, (v) => {
   background: var(--t-title-grad);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+  color: transparent;
   background-clip: text;
   letter-spacing: 1px;
   line-height: 1.2;
@@ -1230,7 +1293,6 @@ watch(showThemePicker, (v) => {
   border-radius: 14px;
   padding: 8px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
-  backdrop-filter: blur(20px);
 }
 
 .theme-dropdown-teleport .dropdown-title {

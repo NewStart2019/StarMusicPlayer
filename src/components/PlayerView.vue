@@ -547,6 +547,34 @@ watch(() => props.lyrics, async () => {
 </template>
 
 <style scoped>
+/* ── 跨浏览器重置 ── */
+button {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  outline: none;
+  font-family: inherit;
+}
+
+button:focus-visible {
+  outline: 2px solid var(--t-accent1);
+  outline-offset: 2px;
+}
+
+input[type="range"] {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  outline: none;
+}
+
+input[type="range"]::-moz-range-track {
+  height: 3px;
+  border-radius: 999px;
+  background: var(--t-border);
+  border: none;
+}
+
 /* ═══════════════ MODAL SHELL ═══════════════ */
 .player-modal {
   position: fixed;
@@ -555,11 +583,8 @@ watch(() => props.lyrics, async () => {
   display: flex;
   align-items: stretch;
   background: rgba(0, 0, 0, .65);
-  backdrop-filter: blur(20px)
-}
-
-.player-inner {
-  position: relative;
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
   width: 100%;
   height: 100%;
   display: flex;
@@ -600,6 +625,14 @@ watch(() => props.lyrics, async () => {
 }
 
 /* ═══════════════ 桌面左侧 ═══════════════ */
+.player-inner {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  position: relative;
+  overflow: hidden
+}
+
 .player-left {
   width: 50%;
   display: flex;
@@ -629,6 +662,7 @@ watch(() => props.lyrics, async () => {
   background: var(--t-title-grad);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+  color: transparent;
   background-clip: text;
   margin-bottom: 6px;
   line-height: 1.25;
@@ -966,6 +1000,7 @@ watch(() => props.lyrics, async () => {
 
 .volume-slider {
   flex: 1;
+  -moz-appearance: none;
   -webkit-appearance: none;
   height: 3px;
   border-radius: 999px;
@@ -975,7 +1010,17 @@ watch(() => props.lyrics, async () => {
 }
 
 .volume-slider::-webkit-slider-thumb {
+  -moz-appearance: none;
   -webkit-appearance: none;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--t-accent1);
+  cursor: pointer;
+  box-shadow: 0 0 6px var(--t-disc-glow)
+}
+
+.volume-slider::-moz-range-thumb {
   width: 13px;
   height: 13px;
   border-radius: 50%;
@@ -1220,7 +1265,8 @@ watch(() => props.lyrics, async () => {
     white-space: nowrap !important;
     overflow: hidden;
     text-overflow: ellipsis;
-    -webkit-text-fill-color: transparent; /* keep gradient */
+    -webkit-text-fill-color: transparent;
+    color: transparent; /* keep gradient */
   }
 
   .m-artist {
@@ -1368,6 +1414,7 @@ watch(() => props.lyrics, async () => {
   .m-vol-slider-inline {
     flex: 1;
     min-width: 0;
+    -moz-appearance: none;
     -webkit-appearance: none;
     height: 3px;
     border-radius: 999px;
@@ -1377,7 +1424,17 @@ watch(() => props.lyrics, async () => {
   }
 
   .m-vol-slider-inline::-webkit-slider-thumb {
+    -moz-appearance: none;
     -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--t-accent1);
+    cursor: pointer;
+    box-shadow: 0 0 6px var(--t-disc-glow);
+  }
+
+  .m-vol-slider-inline::-moz-range-thumb {
     width: 14px;
     height: 14px;
     border-radius: 50%;
@@ -1392,6 +1449,7 @@ watch(() => props.lyrics, async () => {
     inset: 0;
     z-index: 180;
     background: rgba(0, 0, 0, .55);
+    -webkit-backdrop-filter: blur(8px);
     backdrop-filter: blur(8px);
     display: flex;
     align-items: flex-end

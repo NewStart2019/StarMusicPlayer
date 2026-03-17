@@ -239,7 +239,6 @@ const btnTitle = computed(() =>
   border: 1px solid var(--t-border);
   border-radius: 14px;
   box-shadow: 0 -16px 52px var(--t-shadow, rgba(0, 0, 0, 0.5));
-  backdrop-filter: blur(20px);
   overflow: hidden;
   z-index: 200;
 }
@@ -356,6 +355,7 @@ const btnTitle = computed(() =>
 
 .st-custom-input::-webkit-inner-spin-button,
 .st-custom-input::-webkit-outer-spin-button {
+  -moz-appearance: none;
   -webkit-appearance: none;
 }
 
@@ -410,6 +410,7 @@ const btnTitle = computed(() =>
   inset: 0;
   z-index: 300;
   background: rgba(0, 0, 0, 0.55);
+  -webkit-backdrop-filter: blur(6px);
   backdrop-filter: blur(6px);
   display: flex;
   align-items: flex-end;

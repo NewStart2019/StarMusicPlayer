@@ -168,6 +168,34 @@ onUnmounted(() => window.removeEventListener('resize', checkMobile))
 </template>
 
 <style scoped>
+/* ── 跨浏览器重置 ── */
+button {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  outline: none;
+  font-family: inherit;
+}
+
+button:focus-visible {
+  outline: 2px solid var(--t-accent1);
+  outline-offset: 2px;
+}
+
+input[type="range"] {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  outline: none;
+}
+
+input[type="range"]::-moz-range-track {
+  height: 3px;
+  border-radius: 999px;
+  background: var(--t-border);
+  border: none;
+}
+
 /* ══ MiniBar ══════════════════════════════════════════════ */
 .minibar {
   position: fixed;
@@ -176,9 +204,10 @@ onUnmounted(() => window.removeEventListener('resize', checkMobile))
   right: 0;
   z-index: 90;
   background: color-mix(in srgb, var(--t-bg) 82%, transparent);
-  backdrop-filter: blur(32px) saturate(1.6);
   border-top: 1px solid color-mix(in srgb, var(--t-border) 80%, transparent);
   box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.22), 0 -1px 0 color-mix(in srgb, var(--t-accent1) 15%, transparent);
+  -webkit-backdrop-filter: blur(32px) saturate(1.6);
+  backdrop-filter: blur(32px) saturate(1.6);
 }
 
 /* 进度条 */
@@ -389,6 +418,7 @@ onUnmounted(() => window.removeEventListener('resize', checkMobile))
 }
 
 .mini-vol-slider {
+  -moz-appearance: none;
   -webkit-appearance: none;
   width: 90px;
   height: 3px;
@@ -399,7 +429,18 @@ onUnmounted(() => window.removeEventListener('resize', checkMobile))
 }
 
 .mini-vol-slider::-webkit-slider-thumb {
+  -moz-appearance: none;
   -webkit-appearance: none;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--t-accent1);
+  cursor: pointer;
+  box-shadow: 0 0 8px var(--t-disc-glow);
+  transition: transform 0.15s;
+}
+
+.mini-vol-slider::-moz-range-thumb {
   width: 13px;
   height: 13px;
   border-radius: 50%;

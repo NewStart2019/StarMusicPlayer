@@ -317,13 +317,15 @@ const songTitle = computed(() =>
     currentSong.value ? currentSong.value.name.replace(/\.[^.]+$/, '') : '未知歌曲'
 )
 const artistName = computed(() => {
-  // 优先使用 m4a 内嵌元数据
+  // 优先级：export.json > m4a 内嵌 > 文件名解析
+  if (currentSong.value?.metaArtist) return currentSong.value.metaArtist
   if (m4aMeta.value?.artist) return m4aMeta.value.artist
   const i = songTitle.value.indexOf(' - ')
   return i > 0 ? songTitle.value.substring(0, i) : '未知艺术家'
 })
 const displayTitle = computed(() => {
-  // 优先使用 m4a 内嵌元数据
+  // 优先级：export.json > m4a 内嵌 > 文件名解析
+  if (currentSong.value?.metaTitle) return currentSong.value.metaTitle
   if (m4aMeta.value?.title) return m4aMeta.value.title
   const i = songTitle.value.indexOf(' - ')
   return i > 0 ? songTitle.value.substring(i + 3) : songTitle.value
@@ -443,9 +445,24 @@ const convertServerTree = (node, parentPath) => {
       children: (node.children || []).map(c => convertServerTree(c, currentPath))
     }
   return {
-    type: 'file', name: node.name, ext: node.ext, relativePath: node.relativePath,
-    url: node.url, lrc: node.lrc ?? null, isAudio: node.isAudio, isLrc: node.isLrc,
-    source: 'server', path: currentPath
+    type: 'file',
+    name: node.name,
+    ext: node.ext,
+    relativePath: node.relativePath,
+    url: node.url,
+    lrc: node.lrc ?? null,
+    isAudio: node.isAudio,
+    isLrc: node.isLrc,
+    source: 'server',
+    path: currentPath,
+    // export.json 注入的元数据
+    metaTitle: node.metaTitle ?? null,
+    metaArtist: node.metaArtist ?? null,
+    metaAlbum: node.metaAlbum ?? null,
+    metaLyrics: node.metaLyrics ?? null,
+    metaComposer: node.metaComposer ?? null,
+    metaGenre: node.metaGenre ?? null,
+    metaDate: node.metaDate ?? null,
   }
 }
 
@@ -795,54 +812,39 @@ const loadAndPlay = async (index) => {
   await loadLyrics(song)
 }
 
+/* ── 歌词解析辅助 ──────────────────────────────────────────────── */
+const lrcRegex = /\[\d{1,3}:\d{2}/
+const applyLyricsText = (text) => {
+  if (!text?.trim()) return false
+  if (lrcRegex.test(text)) {
+    const parsed = parseLRC(text)
+    if (parsed.length) {
+      lyrics.value = parsed;
+      return true
+    }
+  } else {
+    const plain = parsePlainLyrics(text)
+    if (plain?.length) {
+      lyrics.value = plain;
+      return true
+    }
+  }
+  return false
+}
+
 const loadLyrics = async (song) => {
   lyrics.value = [];
   currentLyricIndex.value = -1
   m4aMeta.value = null
 
-  const ext = song.name.substring(song.name.lastIndexOf('.')).toLowerCase()
-  const isM4A = MUST_PRELOAD_EXTS.has(ext)
-
-  // ── m4a：先解析内嵌元数据（title/artist/lyrics/cover）────────────
-  if (isM4A) {
-    try {
-      let buffer = null
-      if (song.source === 'server') {
-        // 服务器模式：fetch 完整文件
-        const resp = await fetch(song.url)
-        if (resp.ok) buffer = await resp.arrayBuffer()
-      } else if (song.fileObj) {
-        // 本地模式：直接读 File 对象
-        buffer = await song.fileObj.arrayBuffer()
-      }
-      if (buffer) {
-        const meta = parseM4AMetadata(buffer)
-        m4aMeta.value = meta
-        // 优先使用内嵌歌词
-        if (meta.lyrics) {
-          // 判断是否 LRC 格式
-          const lrcTest = /\[\d{1,3}:\d{2}/
-          if (lrcTest.test(meta.lyrics)) {
-            lyrics.value = parseLRC(meta.lyrics)
-          } else {
-            const plain = parsePlainLyrics(meta.lyrics)
-            if (plain) lyrics.value = plain
-          }
-          if (lyrics.value.length) return  // 已有歌词，不再找外部 .lrc
-        }
-      }
-    } catch (e) {
-      console.warn('M4A 元数据解析失败:', e)
-    }
-  }
-
-  // ── 从外部 .lrc 文件加载（优先级低于内嵌）──────────────────────
+  // ── 第1优先：外部 .lrc 文件 ─────────────────────────────────────
   if (song.source === 'server') {
     if (song.lrc) {
       try {
-        lyrics.value = parseLRC(await fetch(song.lrc).then(r => r.text()))
+        const text = await fetch(song.lrc).then(r => r.text())
+        if (applyLyricsText(text)) return
       } catch (e) {
-        console.error('LRC fetch 失败:', e)
+        console.warn('LRC fetch 失败:', e)
       }
     }
   } else {
@@ -858,10 +860,37 @@ const loadLyrics = async (song) => {
     }
     if (node?.children?.has(lrcName)) {
       try {
-        lyrics.value = parseLRC(await node.children.get(lrcName).fileObj.text())
+        const text = await node.children.get(lrcName).fileObj.text()
+        if (applyLyricsText(text)) return
       } catch (e) {
-        console.error('LRC 读取失败:', e)
+        console.warn('LRC 读取失败:', e)
       }
+    }
+  }
+
+  // ── 第2优先：export.json 的 Lyrics 字段 ─────────────────────────
+  if (song.metaLyrics) {
+    if (applyLyricsText(song.metaLyrics)) return
+  }
+
+  // ── 第3优先：m4a 内嵌元数据（只对 m4a/aac 格式）────────────────
+  const ext = song.name.substring(song.name.lastIndexOf('.')).toLowerCase()
+  if (MUST_PRELOAD_EXTS.has(ext)) {
+    try {
+      let buffer = null
+      if (song.source === 'server') {
+        const resp = await fetch(song.url)
+        if (resp.ok) buffer = await resp.arrayBuffer()
+      } else if (song.fileObj) {
+        buffer = await song.fileObj.arrayBuffer()
+      }
+      if (buffer) {
+        const meta = parseM4AMetadata(buffer)
+        m4aMeta.value = meta
+        if (meta.lyrics) applyLyricsText(meta.lyrics)
+      }
+    } catch (e) {
+      console.warn('M4A 元数据解析失败:', e)
     }
   }
 }
@@ -1383,6 +1412,7 @@ onUnmounted(() => {
   transition: background 0.5s;
 }
 
+/* backdrop-filter 浏览器兼容：-webkit- 前缀已在各组件内联加入 */
 .bg-orb {
   position: absolute;
   border-radius: 50%;
@@ -1510,6 +1540,7 @@ onUnmounted(() => {
   z-index: 50;
   background: color-mix(in srgb, var(--t-bg) 94%, white);
   border-left: 1px solid var(--t-border);
+  -webkit-backdrop-filter: blur(20px);
   backdrop-filter: blur(20px);
   display: flex;
   flex-direction: column;

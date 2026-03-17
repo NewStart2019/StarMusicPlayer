@@ -239,6 +239,7 @@ const emit = defineEmits(['close', 'load-index', 'remove-from-playlist'])
   inset: 0;
   z-index: 300;
   background: rgba(0, 0, 0, 0.55);
+  -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
   display: flex;
   align-items: flex-end;
@@ -289,6 +290,7 @@ const emit = defineEmits(['close', 'load-index', 'remove-from-playlist'])
   z-index: 200;
   background: color-mix(in srgb, var(--t-bg) 94%, white);
   border-left: 1px solid var(--t-border);
+  -webkit-backdrop-filter: blur(20px);
   backdrop-filter: blur(20px);
   display: flex;
   flex-direction: column;
