@@ -45,8 +45,18 @@ defineExpose({progressBarRef, mobileProgressRef, lyricsContainerRef, mobileLyric
 
 /* ── UI state ────────────────────────────────── */
 const showPlaylist = ref(false)
-const showLyrics = ref(false)   // 手机歌词抽屉
-const showMeta = ref(false)   // 标签信息面板
+const showLyrics = ref(false)   // 忒儂貉棵喲歾
+const showMeta = ref(false)   // 梓キ陓洘醱啣
+const hasCover = computed(() => !!props.audioMeta?.cover)
+const coverSrc = computed(() => props.audioMeta?.cover || '')
+const coverFace = ref(hasCover.value)
+
+watch(hasCover, (v) => {
+  coverFace.value = v
+})
+watch(() => props.currentFilename, () => {
+  coverFace.value = hasCover.value
+})
 
 /* ── 移动端检测 ──────────────────────────────── */
 const isMobile = ref(false)
@@ -81,6 +91,20 @@ const onKeyDown = (e) => {
       break
   }
 }
+
+const toggleAlbumFace = () => {
+  if (!hasCover.value) return
+  coverFace.value = !coverFace.value
+}
+
+const discStyle = computed(() => ({
+  transform: `rotate(${props.albumRotation}deg) scale(${coverFace.value && hasCover.value ? 0.9 : 1})`
+}))
+
+const coverStyle = computed(() => ({
+  transform: `rotate(${props.albumRotation}deg) scale(${coverFace.value ? 1 : 0.9})`,
+  backgroundImage: coverSrc.value ? `url(${coverSrc.value})` : 'none'
+}))
 
 /* ── helpers ─────────────────────────────────── */
 const fmt = (s) => {
@@ -242,10 +266,12 @@ watch(() => props.lyrics, async () => {
           <h1 class="song-title">{{ displayTitle }}</h1>
           <p class="song-artist">{{ artistName }}</p>
         </div>
-        <div class="album-wrap">
+        <div class="album-wrap" :class="{ 'has-cover': hasCover, 'face-cover': coverFace }"
+             :title="hasCover ? '点击切换封面 / 胶片' : ''"
+             @click="hasCover && toggleAlbumFace()">
           <div class="album-ring ring-outer"></div>
           <div class="album-ring ring-mid"></div>
-          <div class="album-disc" :style="{ transform:`rotate(${albumRotation}deg)` }">
+          <div class="album-face album-disc" :class="{ active: !coverFace || !hasCover }" :style="discStyle">
             <div class="disc-grooves">
               <div class="disc-groove" v-for="i in 8" :key="i"></div>
             </div>
@@ -256,6 +282,9 @@ watch(() => props.lyrics, async () => {
                 <circle cx="18" cy="16" r="3"/>
               </svg>
             </div>
+          </div>
+          <div v-if="hasCover" class="album-face album-cover" :class="{ active: coverFace }" :style="coverStyle">
+            <div class="cover-hole"></div>
           </div>
           <div class="album-glow" :class="{ active: isPlaying }"></div>
         </div>
@@ -404,12 +433,14 @@ watch(() => props.lyrics, async () => {
       <!-- ══════════════ 手机端 ══════════════ -->
       <div class="mobile-player">
 
-        <!-- 封面 -->
+        <!-- 撃中 -->
         <div class="m-cover-zone">
-          <div class="album-wrap m-album">
+          <div class="album-wrap m-album" :class="{ 'has-cover': hasCover, 'face-cover': coverFace }"
+               :title="hasCover ? '点击切换封面 / 胶片' : ''"
+               @click="hasCover && toggleAlbumFace()">
             <div class="album-ring ring-outer"></div>
             <div class="album-ring ring-mid"></div>
-            <div class="album-disc" :style="{ transform:`rotate(${albumRotation}deg)` }">
+            <div class="album-face album-disc" :class="{ active: !coverFace || !hasCover }" :style="discStyle">
               <div class="disc-grooves">
                 <div class="disc-groove" v-for="i in 8" :key="i"></div>
               </div>
@@ -420,6 +451,9 @@ watch(() => props.lyrics, async () => {
                   <circle cx="18" cy="16" r="3"/>
                 </svg>
               </div>
+            </div>
+            <div v-if="hasCover" class="album-face album-cover" :class="{ active: coverFace }" :style="coverStyle">
+              <div class="cover-hole"></div>
             </div>
             <div class="album-glow" :class="{ active:isPlaying }"></div>
           </div>
@@ -783,6 +817,10 @@ input[type="range"]::-moz-range-track {
   flex-shrink: 0
 }
 
+.album-wrap.has-cover {
+  cursor: pointer;
+}
+
 .album-ring {
   position: absolute;
   border-radius: 50%;
@@ -810,14 +848,45 @@ input[type="range"]::-moz-range-track {
   }
 }
 
-.album-disc {
+.album-face {
   position: absolute;
   inset: 0;
   border-radius: 50%;
+  opacity: 0;
+  transition: opacity .3s ease, transform .35s ease;
+  pointer-events: none;
+}
+
+.album-face.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.album-disc {
   background: var(--t-disc-bg);
   border: 2px solid var(--t-disc-border);
   overflow: hidden;
   box-shadow: 0 0 40px rgba(0, 0, 0, .5)
+}
+
+.album-cover {
+  background-size: cover;
+  background-position: center;
+  border: 2px solid var(--t-disc-border);
+  box-shadow: 0 0 40px rgba(0, 0, 0, .5);
+  overflow: hidden;
+}
+
+.cover-hole {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 18%;
+  height: 18%;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--t-disc-center) 65%, rgba(0, 0, 0, 0.65));
+  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.4);
 }
 
 .disc-grooves {

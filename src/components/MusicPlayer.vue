@@ -867,12 +867,20 @@ const CACHE_MAX = 25
 const CACHE_KEYS_LS = 'sm-audio-cache-keys'
 const cacheToast = ref('')
 let cacheToastTimer = null
+const cacheDialogMsg = ref('')
+const showCacheDialog = ref(false)
 
 const showCacheToast = (msg, dur = 1600) => {
   cacheToast.value = msg
   if (cacheToastTimer) clearTimeout(cacheToastTimer)
   cacheToastTimer = setTimeout(() => cacheToast.value = '', dur)
 }
+
+const openCacheDialog = (msg) => {
+  cacheDialogMsg.value = msg
+  showCacheDialog.value = true
+}
+const closeCacheDialog = () => showCacheDialog.value = false
 
 const clearCachedSongs = async () => {
   try {
@@ -884,10 +892,14 @@ const clearCachedSongs = async () => {
       cleared = keys.length
     }
     localStorage.removeItem(CACHE_KEYS_LS)
-    showCacheToast(cleared ? `缓存已清除（${cleared} 项）` : '缓存已清除')
+    const msg = cleared ? `清理成功（${cleared} 项）` : '清理成功'
+    showCacheToast(msg)
+    openCacheDialog(msg)
   } catch (e) {
     console.error('清除缓存失败:', e);
-    showCacheToast('清除缓存失败')
+    const msg = '清理缓存失败'
+    showCacheToast(msg)
+    openCacheDialog(msg)
   }
 }
 
@@ -1472,6 +1484,15 @@ onUnmounted(() => {
     <div class="bg-orb orb3"></div>
     <div class="bg-grid"></div>
     <div v-if="cacheToast" class="cache-toast">{{ cacheToast }}</div>
+    <Transition name="cache-modal">
+      <div v-if="showCacheDialog" class="cache-modal-mask" @click="closeCacheDialog">
+        <div class="cache-modal" @click.stop>
+          <div class="cache-modal-title">清理缓存</div>
+          <div class="cache-modal-msg">{{ cacheDialogMsg }}</div>
+          <button class="cache-modal-btn" @click="closeCacheDialog">我知道了</button>
+        </div>
+      </div>
+    </Transition>
 
     <!-- 首页（文件浏览器）-->
     <FileBrowser
@@ -1738,6 +1759,78 @@ onUnmounted(() => {
   z-index: 4000;
   font-size: 0.9rem;
   backdrop-filter: blur(10px);
+}
+
+.cache-modal-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 4500;
+}
+
+.cache-modal {
+  min-width: 240px;
+  max-width: 340px;
+  padding: 18px 18px 16px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--t-bg-card, rgba(0, 0, 0, 0.7)) 92%, #000);
+  border: 1px solid var(--t-border, rgba(255, 255, 255, 0.15));
+  box-shadow: 0 14px 50px rgba(0, 0, 0, 0.38);
+}
+
+.cache-modal-title {
+  font-family: 'Orbitron', monospace;
+  letter-spacing: 2px;
+  font-size: 0.82rem;
+  color: var(--t-label-color, var(--t-text2));
+}
+
+.cache-modal-msg {
+  margin-top: 10px;
+  color: var(--t-text2);
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.cache-modal-btn {
+  width: 100%;
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--t-border);
+  background: var(--t-overlay, rgba(255, 255, 255, 0.08));
+  color: var(--t-text);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.cache-modal-btn:hover {
+  border-color: var(--t-accent1);
+  color: var(--t-accent1);
+  background: color-mix(in srgb, var(--t-accent1) 10%, transparent);
+}
+
+.cache-modal-enter-active {
+  animation: cacheModalFade 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.cache-modal-leave-active {
+  animation: cacheModalFade 0.18s ease reverse;
+}
+
+@keyframes cacheModalFade {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .player-slide-enter-active {

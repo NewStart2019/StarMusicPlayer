@@ -1,5 +1,6 @@
 <script setup>
-import {ref, computed, watch} from 'vue'
+import {ref, computed, watch, onUnmounted} from 'vue'
+import SettingsPanel from './SettingsPanel.vue'
 
 const props = defineProps({
   hasFolder: {type: Boolean, required: true},
@@ -31,6 +32,8 @@ const serverLoading = ref(false)
 const serverError = ref('')
 const fileInputRef = ref(null)
 const themeWrapRef = ref(null)
+const showSettings = ref(false)
+const appVersion = __APP_VERSION__ || 'dev'
 
 /* 供父组件写入加载 / 错误状态 */
 const setServerLoading = (v) => {
@@ -85,6 +88,14 @@ const applyTheme = (id) => {
   showThemePicker.value = false
   emit('apply-theme', id)
 }
+const toggleSettings = () => {
+  showThemePicker.value = false
+  showSettings.value = !showSettings.value
+}
+const handleClearCache = () => {
+  showSettings.value = false
+  emit('clear-cache')
+}
 const handleDisconnect = () => {
   showServerPanel.value = false
   emit('disconnect')
@@ -106,6 +117,10 @@ const updateDropdownPos = () => {
 watch(showThemePicker, (v) => {
   if (v) updateDropdownPos()
 })
+
+onUnmounted(() => {
+  document.removeEventListener('click', onDocClick, true)
+})
 </script>
 
 <template>
@@ -113,15 +128,22 @@ watch(showThemePicker, (v) => {
 
     <!-- ===== Header ===== -->
     <header class="header" :class="{ 'has-source': hasFolder }">
-      <div class="logo-area">
-        <div class="logo-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <path d="M9 19V6l12-3v13"/>
-            <circle cx="6" cy="19" r="3"/>
-            <circle cx="18" cy="16" r="3"/>
+      <div class="header-left">
+        <button v-if="hasFolder && sourceMode === 'server'" class="btn-server-back" @click="handleDisconnect" title="返回">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M15 19 8 12l7-7"/>
           </svg>
+        </button>
+        <div class="logo-area">
+          <div class="logo-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M9 19V6l12-3v13"/>
+              <circle cx="6" cy="19" r="3"/>
+              <circle cx="18" cy="16" r="3"/>
+            </svg>
+          </div>
+          <span class="logo-text">STAR<span class="logo-accent">MUSIC</span></span>
         </div>
-        <span class="logo-text">STAR<span class="logo-accent">MUSIC</span></span>
       </div>
 
       <div class="header-right">
@@ -134,20 +156,6 @@ watch(showThemePicker, (v) => {
                  @keydown.enter="handleSearchEnter"/>
         </div>
 
-        <div v-if="hasFolder" class="source-badge" :class="sourceMode">
-          <svg v-if="sourceMode === 'server'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="2" y="2" width="20" height="8" rx="2"/>
-            <rect x="2" y="14" width="20" height="8" rx="2"/>
-            <line x1="6" y1="6" x2="6.01" y2="6"/>
-            <line x1="6" y1="18" x2="6.01" y2="18"/>
-          </svg>
-          <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-          </svg>
-          <span>{{ sourceMode === 'server' ? '服务器' : '本地' }}</span>
-          <button class="badge-close" @click="handleDisconnect" title="断开">✕</button>
-        </div>
-
         <div class="theme-wrap" ref="themeWrapRef">
           <button class="btn-theme" ref="btnThemeRef" @click="showThemePicker = !showThemePicker">
             <span class="theme-icon">{{ themes.find(t => t.id === currentThemeId)?.icon }}</span>
@@ -156,9 +164,6 @@ watch(showThemePicker, (v) => {
                  class="theme-chevron" :class="{ open: showThemePicker }">
               <path d="m6 9 6 6 6-6"/>
             </svg>
-          </button>
-          <button class="btn-clearcache" :disabled="!serverMode" title="清除服务器音频缓存" @click="emit('clear-cache')">
-            🧹 清缓存
           </button>
           <Teleport to="body">
             <Transition name="dropdown">
@@ -178,8 +183,25 @@ watch(showThemePicker, (v) => {
             </Transition>
           </Teleport>
         </div>
+
+        <div class="settings-wrap">
+          <button class="btn-settings" @click="toggleSettings">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path
+                  d="M12 15.5A3.5 3.5 0 1 0 12 8.5a3.5 3.5 0 0 0 0 7Zm7.4-3.5a7.4 7.4 0 0 0-.15-1.53l2.02-1.57a.6.6 0 0 0 .14-.76l-1.91-3.3a.6.6 0 0 0-.73-.26l-2.38.95a7.44 7.44 0 0 0-2.65-1.54l-.36-2.54a.6.6 0 0 0-.6-.51H9.82a.6.6 0 0 0-.6.51l-.36 2.54a7.44 7.44 0 0 0-2.65 1.54l-2.38-.95a.6.6 0 0 0-.73.26l-1.9 3.3a.6.6 0 0 0 .13.76l2.02 1.57A7.4 7.4 0 0 0 4.6 12a7.4 7.4 0 0 0 .15 1.53l-2.02 1.57a.6.6 0 0 0-.14.76l1.91 3.3a.6.6 0 0 0 .73.26l2.38-.95a7.44 7.44 0 0 0 2.65 1.54l.36 2.54a.6.6 0 0 0 .6.51h3.36a.6.6 0 0 0 .6-.51l.36-2.54a7.44 7.44 0 0 0 2.65-1.54l2.38.95a.6.6 0 0 0 .73-.26l1.9-3.3a.6.6 0 0 0-.13-.76l-2.02-1.57c.09-.5.15-1.02.15-1.53Z"/>
+            </svg>
+            <span class="settings-label">设置</span>
+          </button>
+        </div>
       </div>
     </header>
+    <SettingsPanel
+        :visible="showSettings"
+        :app-version="appVersion"
+        :server-mode="serverMode"
+        @close="showSettings = false"
+        @clear-cache="handleClearCache"
+    />
 
     <!-- ===== 欢迎页 ===== -->
     <div v-if="!hasFolder" class="welcome-screen">
@@ -417,6 +439,38 @@ select {
   transition: border-color 0.4s, background 0.4s;
 }
 
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.btn-server-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid var(--t-border);
+  background: var(--t-overlay);
+  color: var(--t-text2);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-server-back svg {
+  width: 15px;
+  height: 15px;
+}
+
+.btn-server-back:hover {
+  border-color: var(--t-accent1);
+  color: var(--t-accent1);
+  background: color-mix(in srgb, var(--t-accent1) 10%, transparent);
+}
+
 .logo-area {
   display: flex;
   align-items: center;
@@ -493,52 +547,6 @@ select {
 }
 
 /* 数据源徽标 */
-.source-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 8px 4px 10px;
-  border-radius: 20px;
-  font-size: 0.72rem;
-  font-weight: 600;
-  letter-spacing: 1px;
-  border: 1px solid var(--t-border);
-  background: var(--t-bg-card);
-  color: var(--t-text2);
-}
-
-.source-badge svg {
-  width: 13px;
-  height: 13px;
-  flex-shrink: 0;
-}
-
-.source-badge.server {
-  border-color: var(--t-accent2);
-  color: var(--t-accent2);
-}
-
-.source-badge.local {
-  border-color: var(--t-accent1);
-  color: var(--t-accent1);
-}
-
-.badge-close {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: inherit;
-  opacity: 0.6;
-  padding: 0 0 0 4px;
-  font-size: 0.75rem;
-  line-height: 1;
-  transition: opacity 0.2s;
-}
-
-.badge-close:hover {
-  opacity: 1;
-}
-
 /* 主题切换 */
 .theme-wrap {
   position: relative;
@@ -561,26 +569,6 @@ select {
   cursor: pointer;
   white-space: nowrap;
   transition: all 0.25s;
-}
-
-.btn-clearcache {
-  padding: 7px 12px;
-  border-radius: 18px;
-  border: 1px solid var(--t-border);
-  background: var(--t-overlay);
-  color: var(--t-text2);
-  font-family: inherit;
-  font-size: 0.82rem;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-.btn-clearcache:hover:enabled {
-  border-color: var(--t-accent1);
-  color: var(--t-text);
-}
-.btn-clearcache:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
 }
 
 .btn-theme:hover {
@@ -619,6 +607,36 @@ select {
   box-shadow: 0 20px 60px var(--t-shadow, rgba(0, 0, 0, 0.5));
   -webkit-backdrop-filter: blur(20px);
   backdrop-filter: blur(20px);
+}
+
+.settings-wrap {
+  position: relative;
+}
+
+.btn-settings {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border-radius: 18px;
+  border: 1px solid var(--t-border);
+  background: var(--t-overlay);
+  color: var(--t-text2);
+  font-family: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-settings svg {
+  width: 14px;
+  height: 14px;
+}
+
+.btn-settings:hover {
+  border-color: var(--t-accent1);
+  color: var(--t-accent1);
+  background: color-mix(in srgb, var(--t-accent1) 8%, transparent);
 }
 
 .dropdown-title {
@@ -1248,11 +1266,12 @@ select {
   .btn-theme {
     padding: 5px 10px;
   }
-  .btn-clearcache {
+
+  .theme-label {
     display: none;
   }
 
-  .theme-label {
+  .settings-label {
     display: none;
   }
 
