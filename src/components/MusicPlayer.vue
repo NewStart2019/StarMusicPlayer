@@ -14,6 +14,7 @@ const THEMES = [
   {
     id: 'daylight', name: '白日晴空', icon: '☀️', vars: {
       '--t-bg': '#f5f7fa',
+      '--t-bg-image': 'url("/bg/daylight.svg")',
       '--t-bg-card': 'rgba(255,255,255,0.85)',
       '--t-bg-glass': 'rgba(245,247,250,0.92)',
       '--t-accent1': '#3b82f6',
@@ -51,6 +52,7 @@ const THEMES = [
   {
     id: 'cyber', name: '赛博霓虹', icon: '⚡', vars: {
       '--t-bg': '#050810',
+      '--t-bg-image': 'url("/bg/cyber.svg")',
       '--t-bg-card': 'rgba(255,255,255,0.04)',
       '--t-bg-glass': 'rgba(10,15,35,0.85)',
       '--t-accent1': '#00f2fe',
@@ -87,6 +89,7 @@ const THEMES = [
   {
     id: 'sakura', name: '樱花物语', icon: '🌸', vars: {
       '--t-bg': '#0f0810',
+      '--t-bg-image': 'url("/bg/sakura.svg")',
       '--t-bg-card': 'rgba(255,220,240,0.04)',
       '--t-bg-glass': 'rgba(20,8,20,0.88)',
       '--t-accent1': '#ff85b3',
@@ -123,6 +126,7 @@ const THEMES = [
   {
     id: 'forest', name: '翡翠森林', icon: '🌿', vars: {
       '--t-bg': '#060e08',
+      '--t-bg-image': 'url("/bg/forest.svg")',
       '--t-bg-card': 'rgba(180,255,180,0.03)',
       '--t-bg-glass': 'rgba(6,18,8,0.9)',
       '--t-accent1': '#39d98a',
@@ -159,6 +163,7 @@ const THEMES = [
   {
     id: 'aurora', name: '极光幻境', icon: '🌌', vars: {
       '--t-bg': '#04080f',
+      '--t-bg-image': 'url("/bg/aurora.svg")',
       '--t-bg-card': 'rgba(120,200,255,0.04)',
       '--t-bg-glass': 'rgba(4,10,20,0.9)',
       '--t-accent1': '#7b61ff',
@@ -195,6 +200,7 @@ const THEMES = [
   {
     id: 'ember', name: '烈焰余烬', icon: '🔥', vars: {
       '--t-bg': '#0c0500',
+      '--t-bg-image': 'url("/bg/ember.svg")',
       '--t-bg-card': 'rgba(255,120,30,0.04)',
       '--t-bg-glass': 'rgba(18,6,0,0.9)',
       '--t-accent1': '#ff6b2b',
@@ -270,6 +276,7 @@ const favorites = ref(new Set())
 const lyrics = ref([])
 const audioMeta = ref(null)  // 当前曲目的完整元数据
 const audioFileSize = ref(0)     // 文件字节数
+const bufferPercent = ref(0)     // 音频已缓冲（下载）百分比
 const currentLyricIndex = ref(-1)
 const albumRotation = ref(0)
 const audioRef = ref(null)
@@ -615,6 +622,31 @@ const playAudio = async (entry, visibleList) => {
 const CACHE_NAME = 'sm-audio-v1'
 const CACHE_MAX = 25
 const CACHE_KEYS_LS = 'sm-audio-cache-keys'
+const cacheToast = ref('')
+let cacheToastTimer = null
+
+const showCacheToast = (msg, dur = 1600) => {
+  cacheToast.value = msg
+  if (cacheToastTimer) clearTimeout(cacheToastTimer)
+  cacheToastTimer = setTimeout(() => cacheToast.value = '', dur)
+}
+
+const clearCachedSongs = async () => {
+  try {
+    let cleared = 0
+    if (typeof caches !== 'undefined') {
+      const cache = await caches.open(CACHE_NAME)
+      const keys = await cache.keys()
+      await Promise.all(keys.map(req => cache.delete(req)))
+      cleared = keys.length
+    }
+    localStorage.removeItem(CACHE_KEYS_LS)
+    showCacheToast(cleared ? `缓存已清除（${cleared} 项）` : '缓存已清除')
+  } catch (e) {
+    console.error('清除缓存失败:', e)
+    showCacheToast('清除缓存失败')
+  }
+}
 
 const getCacheKeys = () => {
   try {
@@ -770,6 +802,11 @@ const loadAndPlay = async (index) => {
   }
   audio.pause()
 
+  // 重置本地状态，等待新曲目加载
+  bufferPercent.value = 0
+  duration.value = 0
+  currentTime.value = 0
+
   // 获取新 src（可能耗时：m4a 需完整 fetch）
   let src
   if (song.source === 'server') {
@@ -796,6 +833,7 @@ const loadAndPlay = async (index) => {
 
   // 赋值 audio.src —— 浏览器规范：赋值时自动触发内部 load 算法
   audio.src = src
+  if (src.startsWith('blob:')) bufferPercent.value = 100
   audio.volume = volume.value
 
   try {
@@ -1037,6 +1075,36 @@ const closePlayer = () => {
   showPlayer.value = false
 }
 
+// 计算已缓冲（下载）进度
+const updateBufferedPercent = () => {
+  const audio = audioRef.value
+  if (!audio) {
+    bufferPercent.value = 0
+    return
+  }
+  const dur = audio.duration
+  if (!Number.isFinite(dur) || dur <= 0) {
+    bufferPercent.value = 0
+    return
+  }
+  try {
+    const ranges = audio.buffered
+    if (!ranges || ranges.length === 0) {
+      bufferPercent.value = 0
+      return
+    }
+    let end = 0
+    for (let i = 0; i < ranges.length; i++) {
+      end = Math.max(end, ranges.end(i))
+    }
+    const pct = Math.min(100, (end / dur) * 100)
+    // readyState 4 或缓冲已覆盖全长，直接判定为 100%
+    bufferPercent.value = (audio.readyState >= 4 || end >= dur - 0.25) ? 100 : pct
+  } catch {
+    bufferPercent.value = 0
+  }
+}
+
 // audio 事件
 const onAudioEnded = () => {
   if (sleepMinutes.value === -1) {
@@ -1051,11 +1119,17 @@ const onAudioEnded = () => {
 }
 const onLoadedMetadata = () => {
   duration.value = audioRef.value?.duration || 0
+  updateBufferedPercent()
+}
+const onCanPlayThrough = () => {
+  bufferPercent.value = 100
 }
 const onTimeUpdate = () => {
   if (!isDragging.value) currentTime.value = audioRef.value?.currentTime || 0
   updateLyric()
+  updateBufferedPercent()
 }
+const onProgress = () => updateBufferedPercent()
 
 // 歌词滚动
 const updateLyric = () => {
@@ -1234,6 +1308,7 @@ onMounted(() => {
 onUnmounted(() => {
   stopAlbumRotation()
   if (sleepTimerId) clearTimeout(sleepTimerId)
+  if (cacheToastTimer) clearTimeout(cacheToastTimer)
   document.removeEventListener('keydown', onKeyDown)
   document.removeEventListener('mousemove', onDragMove)
   document.removeEventListener('mouseup', stopDrag)
@@ -1250,6 +1325,7 @@ onUnmounted(() => {
     <div class="bg-orb orb2"></div>
     <div class="bg-orb orb3"></div>
     <div class="bg-grid"></div>
+    <div v-if="cacheToast" class="cache-toast">{{ cacheToast }}</div>
 
     <!-- 首页（文件浏览器）-->
     <FileBrowser
@@ -1267,6 +1343,7 @@ onUnmounted(() => {
         :search-results="searchResults"
         :is-search-mode="isSearchMode"
         :has-mini-bar="!!currentSong && !showPlayer"
+        :cache-supported="cacheSupported"
         @play-audio="({ entry, visibleList }) => playAudio(entry, visibleList)"
         @enter-folder="enterFolder"
         @go-back="goBack"
@@ -1280,6 +1357,7 @@ onUnmounted(() => {
         @show-favorites="toggleFavPanel"
         @search-all="handleSearchAll"
         @clear-search="exitSearchMode"
+        @clear-cache="clearCachedSongs"
     />
 
     <!-- 我的收藏面板 -->
@@ -1346,6 +1424,7 @@ onUnmounted(() => {
           :current-time="currentTime"
           :duration="duration"
           :progress-percent="progressPercent"
+          :buffer-percent="bufferPercent"
           :volume="volume"
           :lyrics="lyrics"
           :current-lyric-index="currentLyricIndex"
@@ -1405,6 +1484,8 @@ onUnmounted(() => {
     <audio ref="audioRef"
            @timeupdate="onTimeUpdate"
            @loadedmetadata="onLoadedMetadata"
+           @canplaythrough="onCanPlayThrough"
+           @progress="onProgress"
            @ended="onAudioEnded">
     </audio>
   </div>
@@ -1416,6 +1497,10 @@ onUnmounted(() => {
   width: 100vw;
   height: 100vh;
   background: var(--t-bg);
+  background-image: var(--t-bg-image, none);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
   overflow: hidden;
   font-family: 'Rajdhani', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   color: var(--t-text);
@@ -1486,6 +1571,21 @@ onUnmounted(() => {
   inset: 0;
   background: none;
   pointer-events: none;
+}
+
+.cache-toast {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--t-bg-card, rgba(0,0,0,0.6)) 80%, #000);
+  color: var(--t-text);
+  border: 1px solid var(--t-border, rgba(255,255,255,0.15));
+  box-shadow: 0 8px 30px rgba(0,0,0,0.25);
+  z-index: 4000;
+  font-size: 0.9rem;
+  backdrop-filter: blur(10px);
 }
 
 /* 播放页过渡动画 */

@@ -13,6 +13,7 @@ const props = defineProps({
   currentTime: {type: Number, required: true},
   duration: {type: Number, required: true},
   progressPercent: {type: Number, required: true},
+  bufferPercent: {type: Number, default: 0},
   volume: {type: Number, required: true},
   lyrics: {type: Array, required: true},
   currentLyricIndex: {type: Number, required: true},
@@ -264,6 +265,7 @@ watch(() => props.lyrics, async () => {
                @click="emit('seek',$event)" @mousedown="emit('drag-start',$event)"
                @touchstart.prevent="emit('drag-start',$event)">
             <div class="progress-bg"></div>
+            <div class="progress-buffer" :style="{ width:bufferPercent+'%' }"></div>
             <div class="progress-fill" :style="{ width:progressPercent+'%' }"></div>
             <div class="progress-thumb" :style="{ left:progressPercent+'%' }"></div>
           </div>
@@ -471,6 +473,7 @@ watch(() => props.lyrics, async () => {
                @click="emit('seek',$event)" @mousedown="emit('drag-start',$event)"
                @touchstart.prevent="emit('drag-start',$event)">
             <div class="progress-bg"></div>
+            <div class="progress-buffer" :style="{ width:bufferPercent+'%' }"></div>
             <div class="progress-fill" :style="{ width:progressPercent+'%' }"></div>
             <div class="progress-thumb" :style="{ left:progressPercent+'%' }"></div>
           </div>
@@ -956,6 +959,18 @@ input[type="range"]::-moz-range-track {
   border-radius: 999px;
   background: var(--t-progress);
   pointer-events: none
+}
+.progress-buffer {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 4px;
+  border-radius: 999px;
+  background: var(--t-progress);
+  opacity: 0.35;
+  pointer-events: none;
+  transition: width .2s ease;
 }
 
 .progress-thumb {

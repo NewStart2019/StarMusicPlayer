@@ -20,7 +20,7 @@ const props = defineProps({
 const emit = defineEmits([
   'play-audio', 'enter-folder', 'go-back', 'go-root', 'breadcrumb-nav',
   'folder-select', 'connect-server', 'disconnect', 'refresh-server', 'apply-theme',
-  'show-favorites', 'search-all', 'clear-search',
+  'show-favorites', 'search-all', 'clear-search', 'clear-cache',
 ])
 
 /* ── 本地 UI 状态 ─────────────────────────── */
@@ -156,6 +156,9 @@ watch(showThemePicker, (v) => {
                  class="theme-chevron" :class="{ open: showThemePicker }">
               <path d="m6 9 6 6 6-6"/>
             </svg>
+          </button>
+          <button class="btn-clearcache" :disabled="!serverMode" title="清除服务器音频缓存" @click="emit('clear-cache')">
+            🧹 清缓存
           </button>
           <Teleport to="body">
             <Transition name="dropdown">
@@ -539,6 +542,9 @@ select {
 /* 主题切换 */
 .theme-wrap {
   position: relative;
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 
 .btn-theme {
@@ -555,6 +561,26 @@ select {
   cursor: pointer;
   white-space: nowrap;
   transition: all 0.25s;
+}
+
+.btn-clearcache {
+  padding: 7px 12px;
+  border-radius: 18px;
+  border: 1px solid var(--t-border);
+  background: var(--t-overlay);
+  color: var(--t-text2);
+  font-family: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn-clearcache:hover:enabled {
+  border-color: var(--t-accent1);
+  color: var(--t-text);
+}
+.btn-clearcache:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .btn-theme:hover {
@@ -1221,6 +1247,9 @@ select {
 
   .btn-theme {
     padding: 5px 10px;
+  }
+  .btn-clearcache {
+    display: none;
   }
 
   .theme-label {

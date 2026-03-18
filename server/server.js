@@ -282,11 +282,22 @@ const handleDownload = (req, res, query) => {
   const mimeType = getMimeType(ext)
   const rangeHeader = req.headers['range']
 
-  // m4a / aac 的 MP4 容器：moov atom 可能在文件末尾，
-  // 浏览器拿到 Range 开头几 KB 时没有解码元数据，无法播放。
-  // 对这类格式禁用 Range，始终返回完整文件（200），让浏览器完整接收后再解码。
-  const NO_RANGE_EXTS = new Set(['.m4a', '.aac', '.mp4'])
-  const allowRange = rangeHeader && !NO_RANGE_EXTS.has(ext)
+  // 统一控制流式读取块大小（默认 512 KB，可通过 query 参数 chunk / chunkSize 覆盖，单位：字节）
+  const DEFAULT_CHUNK = 5 * 1024 * 1024
+  const MIN_CHUNK = 1024 * 1024
+  const MAX_CHUNK = 4 * 1024 * 1024
+  const parseChunkSize = () => {
+    const raw = query.get('chunk') || query.get('chunkSize')
+    const parsed = raw ? parseInt(raw, 10) : NaN
+    if (!Number.isFinite(parsed)) return DEFAULT_CHUNK
+    return Math.min(Math.max(parsed, MIN_CHUNK), MAX_CHUNK)
+  }
+  const streamChunkSize = parseChunkSize()
+  const createStream = (opts = {}) =>
+    fs.createReadStream(absPath, {...opts, highWaterMark: streamChunkSize})
+
+  // 允许所有音频类型使用 Range（由客户端决定是否发送 Range 以按需拉取小块）
+  const allowRange = Boolean(rangeHeader)
 
   // ── Range 请求（mp3 / flac / ogg 等流式格式）────────────────────
   if (allowRange) {
@@ -294,7 +305,9 @@ const handleDownload = (req, res, query) => {
     if (!match) return sendError(res, 416, 'Range 格式错误')
 
     const start = match[1] ? parseInt(match[1], 10) : 0
-    const end = match[2] ? parseInt(match[2], 10) : fileSize - 1
+    const requestedEnd = match[2] ? parseInt(match[2], 10) : fileSize - 1
+    // 强制切块：服务端将本次响应大小限制在 streamChunkSize 内
+    const end = Math.min(requestedEnd, start + streamChunkSize - 1, fileSize - 1)
 
     if (start > end || end >= fileSize) {
       res.writeHead(416, {'Content-Range': `bytes */${fileSize}`})
@@ -310,7 +323,7 @@ const handleDownload = (req, res, query) => {
       'Access-Control-Allow-Origin': '*',
       'Cache-Control': 'public, max-age=3600',
     })
-    const stream = fs.createReadStream(absPath, {start, end})
+    const stream = createStream({start, end})
     stream.pipe(res)
     stream.on('error', () => res.end())
     return
@@ -320,18 +333,15 @@ const handleDownload = (req, res, query) => {
   const encodedName = encodeURIComponent(fileName).replace(/'/g, "%27")
   const asciiFallback = encodeURIComponent(fileName).replace(/%[0-9A-Fa-f]{2}/g, '_')
 
-  // m4a/aac 不声明 Accept-Ranges，防止浏览器发 Range 请求
-  const extraHeaders = NO_RANGE_EXTS.has(ext) ? {} : {'Accept-Ranges': 'bytes'}
-
   res.writeHead(200, {
     'Content-Type': mimeType,
     'Content-Length': fileSize,
     'Content-Disposition': `inline; filename="${asciiFallback}"; filename*=UTF-8''${encodedName}`,
     'Access-Control-Allow-Origin': '*',
     'Cache-Control': 'public, max-age=3600',
-    ...extraHeaders,
+    'Accept-Ranges': 'bytes',
   })
-  const stream = fs.createReadStream(absPath)
+  const stream = createStream()
   stream.pipe(res)
   stream.on('error', (err) => {
     console.error('文件流错误:', err.message)
