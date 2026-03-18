@@ -1030,7 +1030,6 @@ const loadAndPlay = async (index) => {
   }
   if (audio.src?.startsWith('blob:')) URL.revokeObjectURL(audio.src)
   audio.src = src
-  if (src.startsWith('blob:')) bufferPercent.value = 100
   audio.volume = volume.value
   try {
     _playPromise = audio.play();
@@ -1223,6 +1222,32 @@ const toggleFavPanel = () => {
   } else {
     showFavorites.value = false
   }
+}
+
+// 收藏面板下滑关闭（移动端）
+let favSheetGesture = null
+const onFavTouchStart = (e) => {
+  if (e.touches.length !== 1) return
+  const {clientX: x, clientY: y} = e.touches[0]
+  favSheetGesture = {x, y, time: performance.now(), lastY: y, active: false}
+}
+const onFavTouchMove = (e) => {
+  if (!favSheetGesture) return
+  const {clientX: x, clientY: y} = e.touches[0]
+  const dy = y - favSheetGesture.y
+  const dx = x - favSheetGesture.x
+  favSheetGesture.lastY = y
+  if (!favSheetGesture.active && dy > 25 && dy > Math.abs(dx) * 1.2) {
+    favSheetGesture.active = true
+  }
+  if (favSheetGesture.active) e.preventDefault()
+}
+const onFavTouchEnd = () => {
+  if (!favSheetGesture) return
+  const dy = (favSheetGesture.lastY ?? favSheetGesture.y) - favSheetGesture.y
+  const dt = performance.now() - favSheetGesture.time
+  if (favSheetGesture.active && dy > 80 && dt < 900) showFavorites.value = false
+  favSheetGesture = null
 }
 
 const playFromFavorites = async (song) => {
@@ -1528,7 +1553,11 @@ onUnmounted(() => {
 
     <!-- 我的收藏面板 -->
     <Transition name="fav-slide">
-      <div v-if="showFavorites" class="fav-panel">
+      <div v-if="showFavorites" class="fav-panel"
+           @touchstart="onFavTouchStart"
+           @touchmove="onFavTouchMove"
+           @touchend="onFavTouchEnd"
+           @touchcancel="onFavTouchEnd">
         <div class="fav-header">
           <span class="fav-title">我的收藏</span>
           <span class="fav-count" v-if="!favLoading">{{ favoritesList.length }} 首</span>

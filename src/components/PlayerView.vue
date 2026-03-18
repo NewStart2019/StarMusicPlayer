@@ -50,12 +50,21 @@ const showMeta = ref(false)   // 梓キ陓洘醱啣
 const hasCover = computed(() => !!props.audioMeta?.cover)
 const coverSrc = computed(() => props.audioMeta?.cover || '')
 const coverFace = ref(hasCover.value)
+const previewCover = ref(false)
+const edgeSwipeEnabled = true
+const modalRef = ref(null)
+let longPressTimer = null
+let edgeGesture = null
+let downGesture = null
+let lyricSheetGesture = null
 
 watch(hasCover, (v) => {
   coverFace.value = v
+  previewCover.value = false
 })
 watch(() => props.currentFilename, () => {
   coverFace.value = hasCover.value
+  previewCover.value = false
 })
 
 /* ── 移动端检测 ──────────────────────────────── */
@@ -67,10 +76,29 @@ onMounted(() => {
   checkMobile()
   window.addEventListener('resize', checkMobile)
   document.addEventListener('keydown', onKeyDown)
+  if (edgeSwipeEnabled) {
+    history.pushState(null, '', location.href)
+    const lockBack = () => history.pushState(null, '', location.href)
+    window.addEventListener('popstate', lockBack)
+    modalRef.value && (modalRef.value.__edgeLock = lockBack)
+    // 监听全局触摸，捕获阶段确保子元素也能触发
+    window.addEventListener('touchstart', onEdgeTouchStart, {passive: true, capture: true})
+    window.addEventListener('touchmove', onEdgeTouchMove, {passive: false, capture: true})
+    window.addEventListener('touchend', onEdgeTouchEnd, {passive: true, capture: true})
+    window.addEventListener('touchcancel', onEdgeTouchEnd, {passive: true, capture: true})
+  }
 })
 onUnmounted(() => {
   window.removeEventListener('resize', checkMobile)
   document.removeEventListener('keydown', onKeyDown)
+  if (edgeSwipeEnabled) {
+    const lockBack = modalRef.value?.__edgeLock
+    if (lockBack) window.removeEventListener('popstate', lockBack)
+    window.removeEventListener('touchstart', onEdgeTouchStart, {capture: true})
+    window.removeEventListener('touchmove', onEdgeTouchMove, {capture: true})
+    window.removeEventListener('touchend', onEdgeTouchEnd, {capture: true})
+    window.removeEventListener('touchcancel', onEdgeTouchEnd, {capture: true})
+  }
 })
 
 const onKeyDown = (e) => {
@@ -90,6 +118,111 @@ const onKeyDown = (e) => {
       emit('toggle-play')
       break
   }
+}
+
+const openCoverPreview = () => {
+  if (hasCover.value) previewCover.value = true
+}
+const closeCoverPreview = () => {
+  previewCover.value = false
+}
+
+const handleCoverTouchStart = () => {
+  if (!hasCover.value) return
+  longPressTimer = setTimeout(openCoverPreview, 520)
+}
+const handleCoverTouchEnd = () => {
+  if (longPressTimer) clearTimeout(longPressTimer)
+  longPressTimer = null
+}
+const handleCoverMouseDown = () => {
+  if (!hasCover.value) return
+  longPressTimer = setTimeout(openCoverPreview, 520)
+}
+const handleCoverMouseUp = () => handleCoverTouchEnd()
+const handleCoverMouseLeave = () => handleCoverTouchEnd()
+
+const onEdgeTouchStart = (e) => {
+  if (!edgeSwipeEnabled || e.touches.length !== 1) return
+  const {clientX: x, clientY: y} = e.touches[0]
+  const w = window.innerWidth || document.documentElement.clientWidth
+  const edge = 24
+  if (x > edge && x < w - edge) {
+    edgeGesture = null
+  } else {
+    edgeGesture = {x, y, time: performance.now(), lastX: x, lastY: y, active: false}
+  }
+  // 顶部下滑关闭（仅移动端）
+  if (isMobile.value && y < 140) {
+    downGesture = {x, y, time: performance.now(), lastX: x, lastY: y, active: false}
+  } else {
+    downGesture = null
+  }
+}
+
+const onEdgeTouchMove = (e) => {
+  if (!edgeGesture && !downGesture) return
+  const {clientX: x, clientY: y} = e.touches[0]
+  if (edgeGesture) {
+    const dx = x - edgeGesture.x
+    const dy = y - edgeGesture.y
+    edgeGesture.lastX = x
+    edgeGesture.lastY = y
+    if (!edgeGesture.active && Math.abs(dx) > Math.abs(dy) * 1.5 && Math.abs(dx) > 30) {
+      edgeGesture.active = true
+    }
+  }
+  if (downGesture) {
+    const dx = x - downGesture.x
+    const dy = y - downGesture.y
+    downGesture.lastX = x
+    downGesture.lastY = y
+    if (!downGesture.active && dy > 30 && dy > Math.abs(dx) * 1.2) {
+      downGesture.active = true
+    }
+  }
+  if ((edgeGesture && edgeGesture.active) || (downGesture && downGesture.active)) e.preventDefault()
+}
+
+const onEdgeTouchEnd = () => {
+  const now = performance.now()
+  if (edgeGesture) {
+    const dx = (edgeGesture.lastX ?? edgeGesture.x) - edgeGesture.x
+    const dt = now - edgeGesture.time
+    if (edgeGesture.active && Math.abs(dx) > 70 && dt < 800) emit('close')
+  }
+  if (downGesture) {
+    const dy = (downGesture.lastY ?? downGesture.y) - downGesture.y
+    const dt = now - downGesture.time
+    if (downGesture.active && dy > 90 && dt < 900) emit('close')
+  }
+  edgeGesture = null
+  downGesture = null
+}
+
+// 歌词抽屉（移动端）下滑关闭
+const onLyricTouchStart = (e) => {
+  if (!showLyrics.value || e.touches.length !== 1) return
+  const {clientX: x, clientY: y} = e.touches[0]
+  lyricSheetGesture = {x, y, time: performance.now(), lastY: y, active: false}
+}
+const onLyricTouchMove = (e) => {
+  if (!lyricSheetGesture) return
+  const {clientX: x, clientY: y} = e.touches[0]
+  const dy = y - lyricSheetGesture.y
+  const dx = x - lyricSheetGesture.x
+  lyricSheetGesture.lastY = y
+  if (!lyricSheetGesture.active && dy > 25 && dy > Math.abs(dx) * 1.2) {
+    lyricSheetGesture.active = true
+  }
+  if (lyricSheetGesture.active) e.preventDefault()
+}
+const onLyricTouchEnd = () => {
+  if (!lyricSheetGesture) return
+  const dy = (lyricSheetGesture.lastY ?? lyricSheetGesture.y) - lyricSheetGesture.y
+  const dt = performance.now() - lyricSheetGesture.time
+  if (lyricSheetGesture.active && dy > 80 && dt < 900) showLyrics.value = false
+  lyricSheetGesture = null
 }
 
 const toggleAlbumFace = () => {
@@ -250,11 +383,18 @@ watch(() => props.lyrics, async () => {
 </script>
 
 <template>
-  <div class="player-modal">
+  <div class="player-modal"
+       ref="modalRef">
     <div class="player-inner">
 
+      <Transition name="cover-preview">
+        <div v-if="previewCover" class="cover-preview" @click="closeCoverPreview">
+          <img :src="coverSrc" alt="封面预览"/>
+        </div>
+      </Transition>
+
       <!-- 收起按钮 -->
-      <button class="btn-close" @click="emit('close')">
+      <button v-if="!edgeSwipeEnabled || !isMobile" class="btn-close" @click="emit('close')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
           <polyline points="6 9 12 15 18 9"/>
         </svg>
@@ -268,7 +408,13 @@ watch(() => props.lyrics, async () => {
         </div>
         <div class="album-wrap" :class="{ 'has-cover': hasCover, 'face-cover': coverFace }"
              :title="hasCover ? '点击切换封面 / 胶片' : ''"
-             @click="hasCover && toggleAlbumFace()">
+             @click="hasCover && toggleAlbumFace()"
+             @touchstart="handleCoverTouchStart"
+             @touchend="handleCoverTouchEnd"
+             @touchcancel="handleCoverTouchEnd"
+             @mousedown="handleCoverMouseDown"
+             @mouseup="handleCoverMouseUp"
+             @mouseleave="handleCoverMouseLeave">
           <div class="album-ring ring-outer"></div>
           <div class="album-ring ring-mid"></div>
           <div class="album-face album-disc" :class="{ active: !coverFace || !hasCover }" :style="discStyle">
@@ -437,7 +583,13 @@ watch(() => props.lyrics, async () => {
         <div class="m-cover-zone">
           <div class="album-wrap m-album" :class="{ 'has-cover': hasCover, 'face-cover': coverFace }"
                :title="hasCover ? '点击切换封面 / 胶片' : ''"
-               @click="hasCover && toggleAlbumFace()">
+               @click="hasCover && toggleAlbumFace()"
+               @touchstart="handleCoverTouchStart"
+               @touchend="handleCoverTouchEnd"
+               @touchcancel="handleCoverTouchEnd"
+               @mousedown="handleCoverMouseDown"
+               @mouseup="handleCoverMouseUp"
+               @mouseleave="handleCoverMouseLeave">
             <div class="album-ring ring-outer"></div>
             <div class="album-ring ring-mid"></div>
             <div class="album-face album-disc" :class="{ active: !coverFace || !hasCover }" :style="discStyle">
@@ -606,7 +758,11 @@ watch(() => props.lyrics, async () => {
         <!-- 歌词抽屉 -->
         <Transition name="sheet-up">
           <div v-if="showLyrics" class="m-sheet-overlay" @click.self="showLyrics=false">
-            <div class="m-sheet">
+            <div class="m-sheet"
+                 @touchstart="onLyricTouchStart"
+                 @touchmove="onLyricTouchMove"
+                 @touchend="onLyricTouchEnd"
+                 @touchcancel="onLyricTouchEnd">
               <div class="m-sheet-head">
                 <span class="lyrics-label">LYRICS</span>
                 <div class="lyrics-deco"></div>
@@ -724,6 +880,44 @@ input[type="range"]::-moz-range-track {
   radial-gradient(ellipse at 80% 80%, color-mix(in srgb, var(--t-accent4) 8%, transparent) 0%, transparent 60%),
   var(--t-bg-glass);
   overflow: hidden
+}
+
+.cover-preview {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(8px);
+}
+
+.cover-preview img {
+  max-width: min(80vw, 480px);
+  max-height: min(80vh, 480px);
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+  border: 1px solid var(--t-border);
+}
+
+.cover-preview-enter-active {
+  animation: coverFade 0.22s ease-out;
+}
+
+.cover-preview-leave-active {
+  animation: coverFade 0.18s ease-in reverse;
+}
+
+@keyframes coverFade {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .btn-close {
@@ -1029,6 +1223,7 @@ input[type="range"]::-moz-range-track {
   background: var(--t-progress);
   pointer-events: none
 }
+
 .progress-buffer {
   position: absolute;
   left: 0;

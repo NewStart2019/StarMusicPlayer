@@ -25,6 +25,32 @@ const props = defineProps({
   useFixed: {type: Boolean, default: false},
 })
 const emit = defineEmits(['close', 'load-index', 'remove-from-playlist'])
+
+// 下滑关闭（仅 sheet 模式）
+let sheetGesture = null
+const onSheetTouchStart = (e) => {
+  if (props.mode !== 'sheet' || e.touches.length !== 1) return
+  const {clientX: x, clientY: y} = e.touches[0]
+  sheetGesture = {x, y, time: performance.now(), lastY: y, active: false}
+}
+const onSheetTouchMove = (e) => {
+  if (!sheetGesture) return
+  const {clientX: x, clientY: y} = e.touches[0]
+  const dy = y - sheetGesture.y
+  const dx = x - sheetGesture.x
+  sheetGesture.lastY = y
+  if (!sheetGesture.active && dy > 25 && dy > Math.abs(dx) * 1.2) {
+    sheetGesture.active = true
+  }
+  if (sheetGesture.active) e.preventDefault()
+}
+const onSheetTouchEnd = () => {
+  if (!sheetGesture) return
+  const dy = (sheetGesture.lastY ?? sheetGesture.y) - sheetGesture.y
+  const dt = performance.now() - sheetGesture.time
+  if (sheetGesture.active && dy > 80 && dt < 900) emit('close')
+  sheetGesture = null
+}
 </script>
 
 <template>
@@ -32,7 +58,11 @@ const emit = defineEmits(['close', 'load-index', 'remove-from-playlist'])
   <Teleport to="body" v-if="mode === 'sheet'">
     <Transition name="sheet-up">
       <div v-if="show" class="pl-sheet-overlay" @click.self="emit('close')">
-        <div class="pl-sheet-panel">
+        <div class="pl-sheet-panel"
+             @touchstart="onSheetTouchStart"
+             @touchmove="onSheetTouchMove"
+             @touchend="onSheetTouchEnd"
+             @touchcancel="onSheetTouchEnd">
           <div class="pl-sheet-handle"></div>
           <div class="pl-panel-header">
             <span class="pl-panel-title">播放列表</span>
