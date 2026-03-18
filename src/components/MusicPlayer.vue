@@ -1,6 +1,6 @@
 <script setup>
-import {ref, computed, watch, onMounted, onUnmounted, nextTick} from 'vue'
-import {parseLRC, findCurrentLyricIndex} from '../utils/lrcParser.js'
+import {computed, nextTick, onMounted, onUnmounted, ref, watch} from 'vue'
+import {findCurrentLyricIndex, parseLRC} from '../utils/lrcParser.js'
 import {parseAudioMetadata} from '../utils/audioMetadata.js'
 import {parsePlainLyrics} from '../utils/m4aMetadata.js'
 import FileBrowser from './FileBrowser.vue'
@@ -89,7 +89,7 @@ const THEMES = [
   {
     id: 'sakura', name: '樱花物语', icon: '🌸', vars: {
       '--t-bg': '#0f0810',
-      '--t-bg-image': 'url("/bg/sakura.svg")',
+      '--t-bg-image': 'none',
       '--t-bg-card': 'rgba(255,220,240,0.04)',
       '--t-bg-glass': 'rgba(20,8,20,0.88)',
       '--t-accent1': '#ff85b3',
@@ -127,7 +127,6 @@ const THEMES = [
     id: 'forest', name: '翡翠森林', icon: '🌿', vars: {
       '--t-bg': '#060e08',
       '--t-bg-image': 'url("/bg/forest.svg")',
-      '--t-bg-card': 'rgba(180,255,180,0.03)',
       '--t-bg-glass': 'rgba(6,18,8,0.9)',
       '--t-accent1': '#39d98a',
       '--t-accent2': '#88f0b8',
@@ -163,7 +162,7 @@ const THEMES = [
   {
     id: 'aurora', name: '极光幻境', icon: '🌌', vars: {
       '--t-bg': '#04080f',
-      '--t-bg-image': 'url("/bg/aurora.svg")',
+      '--t-bg-image': 'url("/bg/Aurora.png")',
       '--t-bg-card': 'rgba(120,200,255,0.04)',
       '--t-bg-glass': 'rgba(4,10,20,0.9)',
       '--t-accent1': '#7b61ff',
@@ -240,10 +239,298 @@ const currentThemeId = ref(localStorage.getItem('sm-theme') || 'daylight')
 const themeVars = computed(() => THEMES.find(t => t.id === currentThemeId.value)?.vars ?? {})
 const applyTheme = (id) => {
   if (THEMES.find(t => t.id === id)) {
-    currentThemeId.value = id;
+    currentThemeId.value = id
     localStorage.setItem('sm-theme', id)
   }
 }
+
+// =============================================
+// Canvas Background Animation
+// =============================================
+const CANVAS_THEMES = new Set(['sakura'])
+const bgCanvasRef = ref(null)
+let bgCtx = null, bgW = 0, bgH = 0, bgRafId = null, bgFrame = 0
+
+// ── Perlin Noise ──────────────────────────────
+const _perm = new Uint8Array(512)
+;(() => {
+  const t = new Uint8Array(256)
+  for (let i = 0; i < 256; i++) t[i] = i
+  for (let i = 255; i > 0; i--) {
+    const j = (Math.random() * (i + 1)) | 0;
+    [t[i], t[j]] = [t[j], t[i]]
+  }
+  for (let i = 0; i < 512; i++) _perm[i] = t[i & 255]
+})()
+const _fade = t => t * t * t * (t * (t * 6 - 15) + 10)
+const _lerp = (t, a, b) => a + t * (b - a)
+const _grad = (h, x, y) => ((h & 1) ? -x : x) + ((h & 2) ? -y : y)
+
+function bgNoise(x, y) {
+  const X = Math.floor(x) & 255, Y = Math.floor(y) & 255
+  x -= Math.floor(x);
+  y -= Math.floor(y)
+  const u = _fade(x), v = _fade(y)
+  const a = _perm[X] + Y, b = _perm[X + 1] + Y
+  return _lerp(v, _lerp(u, _grad(_perm[a], x, y), _grad(_perm[b], x - 1, y)),
+      _lerp(u, _grad(_perm[a + 1], x, y - 1), _grad(_perm[b + 1], x - 1, y - 1)))
+}
+
+// ── Fire (单根外焰，缓慢跳动) ─────────────────
+let singleFlame = null
+const initFire = () => {
+  // 单根火苗，居中，参数固定
+  singleFlame = {
+    x: 0, // 运行时按 bgW/2 计算
+    baseW: 0, // 运行时按 bgW 比例计算
+    // 三层正弦叠加，频率极慢，模拟真实外焰呼吸
+    ph1: 0, ph2: 1.2, ph3: 2.5,
+    ph4: 0.7, ph5: 3.1,          // 额外高频微抖
+    flickPh: 0,
+  }
+}
+const drawFire = () => {
+  const c = bgCtx
+  c.clearRect(0, 0, bgW, bgH)
+  c.fillStyle = '#060100';
+  c.fillRect(0, 0, bgW, bgH)
+
+  const fl = singleFlame
+  const cx = bgW / 2
+  const bw = bgW * 0.22   // 底部半宽
+  const baseY = bgH
+
+  // 极慢相位推进 —— 产生缓慢呼吸感
+  fl.ph1 += 0.008
+  fl.ph2 += 0.013
+  fl.ph3 += 0.006
+  fl.ph4 += 0.022
+  fl.ph5 += 0.031
+  fl.flickPh += 0.018
+
+  // 高度：主呼吸 + 次波动，变化范围约 ±18%
+  const breathe = Math.sin(fl.ph1) * 0.12 + Math.sin(fl.ph2) * 0.06 + Math.sin(fl.ph3) * 0.04
+  const flicker = Math.sin(fl.ph4) * 0.025 + Math.sin(fl.ph5) * 0.015
+  const h = bgH * (0.55 + breathe + flicker)
+
+  // 火尖横向漂移：极慢，幅度小
+  const sway = Math.sin(fl.ph1 * 0.8) * bgW * 0.018 + Math.sin(fl.ph2 * 1.1) * bgW * 0.010
+
+  const tipX = cx + sway
+  const tipY = baseY - h
+
+  // 贝塞尔控制点 —— 外焰轮廓：底宽、腰收、尖细
+  const cp1x = cx - bw * 0.82 + sway * 0.15, cp1y = baseY - h * 0.32
+  const cp2x = tipX - bw * 0.12, cp2y = tipY + h * 0.20
+  const cp3x = tipX + bw * 0.12, cp3y = tipY + h * 0.20
+  const cp4x = cx + bw * 0.82 + sway * 0.15, cp4y = baseY - h * 0.32
+
+  // 外焰渐变：底透明 → 深红 → 橙 → 黄白尖
+  const brightnessBoost = 0.85 + Math.sin(fl.flickPh) * 0.15
+  const gr = c.createLinearGradient(cx, baseY, tipX, tipY)
+  gr.addColorStop(0, 'rgba(0,0,0,0)')
+  gr.addColorStop(0.08, `rgba(180,15,0,${0.38 * brightnessBoost})`)
+  gr.addColorStop(0.30, `rgba(255,55,0,${0.65 * brightnessBoost})`)
+  gr.addColorStop(0.58, `rgba(255,130,15,${0.78 * brightnessBoost})`)
+  gr.addColorStop(0.80, `rgba(255,205,50,${0.72 * brightnessBoost})`)
+  gr.addColorStop(0.94, `rgba(255,248,160,${0.55 * brightnessBoost})`)
+  gr.addColorStop(1, 'rgba(255,255,255,0)')
+
+  c.save();
+  c.globalCompositeOperation = 'screen'
+  c.fillStyle = gr
+  c.beginPath()
+  c.moveTo(cx - bw, baseY)
+  c.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, tipX, tipY)
+  c.bezierCurveTo(cp3x, cp3y, cp4x, cp4y, cx + bw, baseY)
+  c.closePath()
+  c.fill()
+
+  // 底部辉光晕
+  const baseGlow = c.createRadialGradient(cx, baseY, 0, cx, baseY, bw * 1.6)
+  baseGlow.addColorStop(0, `rgba(255,70,0,${0.22 * brightnessBoost})`)
+  baseGlow.addColorStop(0.5, `rgba(200,30,0,${0.10 * brightnessBoost})`)
+  baseGlow.addColorStop(1, 'rgba(0,0,0,0)')
+  c.fillStyle = baseGlow;
+  c.fillRect(cx - bw * 2, baseY - bw * 1.6, bw * 4, bw * 1.6)
+
+  c.restore()
+}
+
+// ── Aurora ────────────────────────────────────
+let bgStars = [], auroraLayers = []
+const initAurora = () => {
+  bgStars = []
+  for (let i = 0; i < 240; i++) bgStars.push({
+    x: Math.random() * bgW, y: Math.random() * bgH * 0.83,
+    r: 0.3 + Math.random() * 1.5, tw: Math.random() * Math.PI * 2,
+    sp: 0.015 + Math.random() * 0.04, base: 0.3 + Math.random() * 0.7
+  })
+  auroraLayers = [
+    {h: 145, s: 88, spd: 0.00042, amp: bgH * 0.16, ph: 0, fr: 1.35, yb: bgH * 0.22, wb: bgH * 0.30, al: 0.58},
+    {h: 160, s: 82, spd: 0.00060, amp: bgH * 0.11, ph: 1.4, fr: 1.05, yb: bgH * 0.30, wb: bgH * 0.22, al: 0.46},
+    {h: 200, s: 78, spd: 0.00030, amp: bgH * 0.13, ph: 3.1, fr: 0.88, yb: bgH * 0.18, wb: bgH * 0.25, al: 0.40},
+    {h: 272, s: 65, spd: 0.00072, amp: bgH * 0.10, ph: 0.7, fr: 1.62, yb: bgH * 0.38, wb: bgH * 0.18, al: 0.32},
+    {h: 125, s: 92, spd: 0.00050, amp: bgH * 0.12, ph: 2.3, fr: 1.18, yb: bgH * 0.26, wb: bgH * 0.20, al: 0.38},
+  ]
+}
+const drawAurora = () => {
+  const c = bgCtx
+  c.fillStyle = '#04080f';
+  c.fillRect(0, 0, bgW, bgH)
+  c.save();
+  c.globalCompositeOperation = 'screen'
+  const steps = 110
+  for (const L of auroraLayers) {
+    L.ph += L.spd
+    const pts = []
+    for (let i = 0; i <= steps; i++) {
+      const x = i / steps * bgW
+      const n1 = Math.sin(x * 0.0028 * L.fr + L.ph * 2.4) * L.amp
+      const n2 = Math.sin(x * 0.0052 * L.fr + L.ph * 1.6) * (L.amp * 0.38)
+      const n3 = bgNoise(x * 0.003 + L.ph, L.ph * 0.8) * (L.amp * 0.55)
+      pts.push({x, y: L.yb + n1 + n2 + n3})
+    }
+    const slices = 72
+    for (let s = 0; s < slices; s++) {
+      const pr = s / slices, bell = Math.pow(Math.sin(pr * Math.PI), 1.5) * L.al
+      const hShift = Math.sin(pr * Math.PI * 3 + L.ph * 6) * 18
+      const lum = 50 + pr * 22 + Math.sin(pr * Math.PI * 2) * 10
+      c.strokeStyle = `hsla(${L.h + hShift},${L.s}%,${lum}%,${bell})`
+      c.lineWidth = L.wb / slices * 3.8;
+      c.beginPath()
+      const yOff = (pr - 0.5) * L.wb
+      for (let i = 0; i <= steps; i++) {
+        const p = pts[i];
+        i === 0 ? c.moveTo(p.x, p.y + yOff) : c.lineTo(p.x, p.y + yOff)
+      }
+      c.stroke()
+    }
+    c.strokeStyle = `hsla(${L.h + 15},100%,88%,${L.al * 0.5})`;
+    c.lineWidth = 1.2;
+    c.beginPath()
+    for (let i = 0; i <= steps; i++) {
+      const p = pts[i];
+      const sh = Math.sin(i * 0.18 + bgFrame * 0.07 + L.ph * 5) * 5;
+      i === 0 ? c.moveTo(p.x, p.y + sh) : c.lineTo(p.x, p.y + sh)
+    }
+    c.stroke()
+  }
+  c.restore()
+}
+
+
+// ── Sakura ────────────────────────────────────
+let bgPetals = []
+const mkPetal = (init) => ({
+  x: Math.random() * (bgW + 160) - 80,
+  y: init ? Math.random() * bgH : -(10 + Math.random() * 40),
+  vx: -0.3 - Math.random() * 0.7, vy: 0.15 + Math.random() * 0.40,
+  rot: Math.random() * Math.PI * 2, rotV: (Math.random() - 0.5) * 0.018,
+  swPh: Math.random() * Math.PI * 2, swAmp: 0.4 + Math.random() * 1.4,
+  swFr: 0.008 + Math.random() * 0.016,
+  flPh: Math.random() * Math.PI * 2, flV: 0.018 + Math.random() * 0.032,
+  sz: 4 + Math.random() * 10, alpha: 0.45 + Math.random() * 0.50,
+  depth: 0.35 + Math.random() * 0.65, hue: 328 + Math.random() * 28,
+  sat: 55 + Math.random() * 35, lum: 78 + Math.random() * 15
+})
+const drawSakuraPetal = (c, p) => {
+  c.save();
+  c.translate(p.x, p.y);
+  c.rotate(p.rot)
+  const fl = Math.abs(Math.cos(p.flPh)) * 0.5 + 0.5;
+  c.scale(1, fl)
+  const a = p.alpha * p.depth, s = p.sz
+  c.fillStyle = `hsla(${p.hue},${p.sat}%,${p.lum}%,${a})`
+  c.beginPath()
+  c.moveTo(0, -s);
+  c.bezierCurveTo(s * 0.9, -s * 0.9, s * 1.1, s * 0.1, 0, s * 0.5)
+  c.bezierCurveTo(-s * 1.1, s * 0.1, -s * 0.9, -s * 0.9, 0, -s);
+  c.fill()
+  c.strokeStyle = `hsla(${p.hue - 5},${p.sat - 10}%,${p.lum - 18}%,${a * 0.3})`;
+  c.lineWidth = 0.5
+  c.beginPath();
+  c.moveTo(0, -s);
+  c.lineTo(0, -s * 0.65);
+  c.stroke()
+  c.strokeStyle = `hsla(${p.hue - 10},${p.sat - 15}%,${p.lum - 22}%,${a * 0.2})`;
+  c.lineWidth = 0.4
+  c.beginPath();
+  c.moveTo(0, s * 0.35);
+  c.lineTo(s * 0.45, -s * 0.25);
+  c.stroke()
+  c.beginPath();
+  c.moveTo(0, s * 0.35);
+  c.lineTo(-s * 0.45, -s * 0.25);
+  c.stroke()
+  c.restore()
+}
+const initSakura = () => {
+  bgPetals = []
+  for (let i = 0; i < 35; i++) bgPetals.push(mkPetal(true))
+}
+const drawSakura = () => {
+  const c = bgCtx
+  c.fillStyle = '#130818';
+  c.fillRect(0, 0, bgW, bgH)
+  const glow = c.createRadialGradient(bgW * 0.5, bgH * 0.4, 0, bgW * 0.5, bgH * 0.4, bgW * 0.55)
+  glow.addColorStop(0, 'rgba(200,100,160,0.08)')
+  glow.addColorStop(1, 'rgba(0,0,0,0)')
+  c.fillStyle = glow;
+  c.fillRect(0, 0, bgW, bgH)
+  const t = bgFrame * 0.008
+  const wStr = 0.8 + Math.sin(t * 0.6) * 0.25 + Math.sin(t * 1.5) * 0.1
+  for (let i = bgPetals.length - 1; i >= 0; i--) {
+    const p = bgPetals[i]
+    p.swPh += p.swFr;
+    p.flPh += p.flV;
+    p.rot += p.rotV
+    p.x += p.vx * wStr + Math.sin(p.swPh) * p.swAmp
+    p.y += p.vy + Math.cos(p.swPh * 0.8) * 0.15
+    if (p.y > bgH + 20 || p.x < -80 || p.x > bgW + 80) bgPetals[i] = mkPetal(false)
+    else drawSakuraPetal(c, p)
+  }
+  while (bgPetals.length < 35) bgPetals.push(mkPetal(false))
+}
+
+// ── Canvas lifecycle ──────────────────────────
+const startBgCanvas = (themeId) => {
+  stopBgCanvas()
+  const canvas = bgCanvasRef.value
+  if (!canvas) return
+  bgW = canvas.width = canvas.offsetWidth || window.innerWidth
+  bgH = canvas.height = canvas.offsetHeight || window.innerHeight
+  bgCtx = canvas.getContext('2d')
+  bgFrame = 0
+  if (themeId === 'ember') initFire()
+  else if (themeId === 'sakura') initSakura()
+  const loop = () => {
+    bgFrame++
+    if (themeId === 'ember') drawFire()
+    else if (themeId === 'sakura') drawSakura()
+    bgRafId = requestAnimationFrame(loop)
+  }
+  bgRafId = requestAnimationFrame(loop)
+}
+const stopBgCanvas = () => {
+  if (bgRafId) {
+    cancelAnimationFrame(bgRafId);
+    bgRafId = null
+  }
+}
+let _bgResizeTimer = null
+const onBgResize = () => {
+  clearTimeout(_bgResizeTimer)
+  _bgResizeTimer = setTimeout(() => {
+    if (CANVAS_THEMES.has(currentThemeId.value)) {
+      nextTick(() => startBgCanvas(currentThemeId.value))
+    }
+  }, 200)
+}
+watch(currentThemeId, (id) => {
+  stopBgCanvas()
+  if (CANVAS_THEMES.has(id)) nextTick(() => startBgCanvas(id))
+})
 
 // =============================================
 // 浏览器状态
@@ -274,23 +561,21 @@ const volume = ref(parseFloat(localStorage.getItem('sm-volume') ?? '0.8'))
 const isDragging = ref(false)
 const favorites = ref(new Set())
 const lyrics = ref([])
-const audioMeta = ref(null)  // 当前曲目的完整元数据
-const audioFileSize = ref(0)     // 文件字节数
-const bufferPercent = ref(0)     // 音频已缓冲（下载）百分比
+const audioMeta = ref(null)
+const audioFileSize = ref(0)
+const bufferPercent = ref(0)
 const currentLyricIndex = ref(-1)
 const albumRotation = ref(0)
 const audioRef = ref(null)
 const playerViewRef = ref(null)
 
-// 播放模式：order / shuffle / repeat
 const playMode = ref('order')
 const cyclePlayMode = () => {
   playMode.value = {order: 'shuffle', shuffle: 'repeat', repeat: 'order'}[playMode.value]
 }
 
-// 睡眠定时器
-const sleepMinutes = ref(0)   // 0 = 未启用
-const sleepEndTime = ref(0)   // Date.now() + ms
+const sleepMinutes = ref(0)
+const sleepEndTime = ref(0)
 let sleepTimerId = null
 const setSleepTimer = (minutes) => {
   if (sleepTimerId) {
@@ -304,11 +589,11 @@ const setSleepTimer = (minutes) => {
   }
   sleepEndTime.value = Date.now() + minutes * 60_000
   sleepTimerId = setTimeout(() => {
-    audioRef.value?.pause()
-    isPlaying.value = false
+    audioRef.value?.pause();
+    isPlaying.value = false;
     stopAlbumRotation()
-    sleepMinutes.value = 0
-    sleepEndTime.value = 0
+    sleepMinutes.value = 0;
+    sleepEndTime.value = 0;
     sleepTimerId = null
   }, minutes * 60_000)
 }
@@ -326,14 +611,12 @@ const songTitle = computed(() =>
     currentSong.value ? currentSong.value.name.replace(/\.[^.]+$/, '') : '未知歌曲'
 )
 const artistName = computed(() => {
-  // 优先级：export.json > m4a 内嵌 > 文件名解析
   if (currentSong.value?.metaArtist) return currentSong.value.metaArtist
   if (audioMeta.value?.artist) return audioMeta.value.artist
   const i = songTitle.value.indexOf(' - ')
   return i > 0 ? songTitle.value.substring(0, i) : '未知艺术家'
 })
 const displayTitle = computed(() => {
-  // 优先级：export.json > m4a 内嵌 > 文件名解析
   if (currentSong.value?.metaTitle) return currentSong.value.metaTitle
   if (audioMeta.value?.title) return audioMeta.value.title
   const i = songTitle.value.indexOf(' - ')
@@ -356,11 +639,11 @@ const isLrcFile = (n) => n.toLowerCase().endsWith('.lrc')
 const handleFolderSelect = (event) => {
   const files = Array.from(event.target.files)
   if (!files.length) return
-  errorMsg.value = ''
+  errorMsg.value = '';
   sourceMode.value = 'local'
-  buildVirtualFS(files)
-  hasFolder.value = true
-  pathStack.value = []
+  buildVirtualFS(files);
+  hasFolder.value = true;
+  pathStack.value = [];
   navigateToPath([])
 }
 
@@ -422,7 +705,7 @@ const hasAudioInFolder = (folder) => {
 // =============================================
 // 服务器模式
 // =============================================
-const serverBase = ref(window.location.origin)  // 默认当前域名，无需手动输入
+const serverBase = ref(window.location.origin)
 const connectServer = async ({url} = {}) => {
   const base = (url || window.location.origin).replace(/\/$/, '')
   fileBrowserRef.value?.setServerLoading(true)
@@ -432,12 +715,12 @@ const connectServer = async ({url} = {}) => {
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const data = await res.json()
     if (!data.success) throw new Error(data.error || '服务器返回失败')
-    serverBase.value = base
+    serverBase.value = base;
     serverTree.value = convertServerTree(data.tree, [])
-    allEntries.value = serverTree.value
-    hasFolder.value = true
+    allEntries.value = serverTree.value;
+    hasFolder.value = true;
     sourceMode.value = 'server'
-    pathStack.value = []
+    pathStack.value = [];
     navigateToServerPath([])
   } catch (e) {
     fileBrowserRef.value?.setServerError(`连接失败：${e.message}`)
@@ -450,28 +733,19 @@ const convertServerTree = (node, parentPath) => {
   const currentPath = [...parentPath, node.name]
   if (node.type === 'folder')
     return {
-      type: 'folder', name: node.name, path: currentPath, source: 'server',
+      type: 'folder',
+      name: node.name,
+      path: currentPath,
+      source: 'server',
       children: (node.children || []).map(c => convertServerTree(c, currentPath))
     }
   return {
-    type: 'file',
-    name: node.name,
-    ext: node.ext,
-    relativePath: node.relativePath,
-    url: node.url,
-    lrc: node.lrc ?? null,
-    isAudio: node.isAudio,
-    isLrc: node.isLrc,
-    source: 'server',
-    path: currentPath,
-    // export.json 注入的元数据
-    metaTitle: node.metaTitle ?? null,
-    metaArtist: node.metaArtist ?? null,
-    metaAlbum: node.metaAlbum ?? null,
-    metaLyrics: node.metaLyrics ?? null,
-    metaComposer: node.metaComposer ?? null,
-    metaGenre: node.metaGenre ?? null,
-    metaDate: node.metaDate ?? null,
+    type: 'file', name: node.name, ext: node.ext, relativePath: node.relativePath,
+    url: node.url, lrc: node.lrc ?? null, isAudio: node.isAudio, isLrc: node.isLrc,
+    source: 'server', path: currentPath,
+    metaTitle: node.metaTitle ?? null, metaArtist: node.metaArtist ?? null,
+    metaAlbum: node.metaAlbum ?? null, metaLyrics: node.metaLyrics ?? null,
+    metaComposer: node.metaComposer ?? null, metaGenre: node.metaGenre ?? null, metaDate: node.metaDate ?? null,
   }
 }
 
@@ -486,60 +760,45 @@ const navigateToServerPath = (pathParts) => {
     currentEntries.value = [];
     return
   }
-  const items = (node.children || []).filter(e =>
-      e.type === 'folder' ? hasAudioInServerFolder(e) : e.isAudio
-  )
+  const items = (node.children || []).filter(e => e.type === 'folder' ? hasAudioInServerFolder(e) : e.isAudio)
   items.sort((a, b) => {
-    if (a.type !== b.type) return a.type === 'folder' ? -1 : 1
+    if (a.type !== b.type) return a.type === 'folder' ? -1 : 1;
     return a.name.localeCompare(b.name)
   })
   currentEntries.value = items
-  pathStack.value = pathParts.length > 0
-      ? pathParts.map((name, i) => ({name, path: pathParts.slice(0, i + 1)}))
-      : []
+  pathStack.value = pathParts.length > 0 ? pathParts.map((name, i) => ({name, path: pathParts.slice(0, i + 1)})) : []
 }
 
 const hasAudioInServerFolder = (folder) =>
-    (folder.children || []).some(e =>
-        (e.type === 'file' && e.isAudio) || (e.type === 'folder' && hasAudioInServerFolder(e))
-    )
+    (folder.children || []).some(e => (e.type === 'file' && e.isAudio) || (e.type === 'folder' && hasAudioInServerFolder(e)))
 
 const disconnectServer = () => {
   sourceMode.value = 'local';
-  hasFolder.value = false
-  serverBase.value = '';
+  hasFolder.value = false;
+  serverBase.value = ''
   serverTree.value = null;
-  allEntries.value = null
+  allEntries.value = null;
   currentEntries.value = [];
   pathStack.value = []
-  exitSearchMode()
+  exitSearchMode();
   if (showPlayer.value) closePlayer()
 }
 
 const refreshServer = () => {
   connectServer({url: serverBase.value || window.location.origin})
 }
-const findFirstAudio = (node) => {
-  if (!node) return null
-  if (node.isAudio) return node
-  for (const c of (node.children || [])) {
-    const r = findFirstAudio(c);
-    if (r) return r
-  }
-  return null
-}
 
 // =============================================
 // 导航
 // =============================================
 const enterFolder = (entry) => {
-  exitSearchMode()
+  exitSearchMode();
   fileBrowserRef.value?.clearSearch()
   if (sourceMode.value === 'server') navigateToServerPath(entry.path.slice(1))
   else navigateToPath(entry.path.slice(1))
 }
 const goBack = () => {
-  exitSearchMode()
+  exitSearchMode();
   fileBrowserRef.value?.clearSearch()
   const nav = sourceMode.value === 'server' ? navigateToServerPath : navigateToPath
   if (pathStack.value.length <= 1) {
@@ -548,30 +807,26 @@ const goBack = () => {
   } else nav(pathStack.value[pathStack.value.length - 2].path)
 }
 const goRoot = () => {
-  exitSearchMode()
-  fileBrowserRef.value?.clearSearch()
+  exitSearchMode();
+  fileBrowserRef.value?.clearSearch();
   pathStack.value = []
   if (sourceMode.value === 'server') navigateToServerPath([])
   else navigateToPath([])
 }
 const breadcrumbNav = (item) => {
-  exitSearchMode()
+  exitSearchMode();
   fileBrowserRef.value?.clearSearch()
   if (sourceMode.value === 'server') navigateToServerPath(item.path)
   else navigateToPath(item.path)
 }
 
-// ── 全局搜索 ─────────────────────────────────
-// 递归收集本地 Map 树中的所有音频文件
 const collectLocalAudio = (node, result = []) => {
   if (!node?.children) return result
   node.children.forEach(e => {
-    if (e.isAudio) result.push(e)
-    else if (e.type === 'folder') collectLocalAudio(e, result)
+    if (e.isAudio) result.push(e); else if (e.type === 'folder') collectLocalAudio(e, result)
   })
   return result
 }
-// 递归收集服务端数组树中的所有音频文件
 const collectServerAudio = (node, result = []) => {
   if (!node) return result
   if (node.isAudio) {
@@ -585,23 +840,18 @@ const collectServerAudio = (node, result = []) => {
 const handleSearchAll = (keyword) => {
   if (!allEntries.value || !keyword.trim()) return
   const q = keyword.toLowerCase()
-  const all = sourceMode.value === 'server'
-      ? collectServerAudio(allEntries.value)
-      : collectLocalAudio(allEntries.value)
+  const all = sourceMode.value === 'server' ? collectServerAudio(allEntries.value) : collectLocalAudio(allEntries.value)
   searchResults.value = all.filter(e => e.name.toLowerCase().includes(q))
   isSearchMode.value = true
 }
-
 const exitSearchMode = () => {
-  isSearchMode.value = false
+  isSearchMode.value = false;
   searchResults.value = null
 }
 
 // =============================================
 // 播放控制
 // =============================================
-// visibleList：可选，传入当前搜索过滤后的列表，用于构建 playlist
-// 不传时退回到 currentEntries（保持旧行为）
 const playAudio = async (entry, visibleList) => {
   const source = visibleList ?? currentEntries.value
   const audioList = source.filter(e => e.type === 'file' && e.isAudio)
@@ -612,13 +862,6 @@ const playAudio = async (entry, visibleList) => {
   await loadAndPlay(currentIndex.value)
 }
 
-
-/* ══ 音频缓存（最近25首）══════════════════════════════════════
- *  服务器模式：Cache API 缓存 HTTP response
- *  本地模式：IndexedDB 存 ArrayBuffer（File 对象不能跨会话持久化，
- *            但同一会话内 fileObj 已存在，直接 createObjectURL 无需缓存）
- *  缓存 key 列表存在 localStorage sm-audio-cache-keys（有序，最多25个）
- * ══════════════════════════════════════════════════════════ */
 const CACHE_NAME = 'sm-audio-v1'
 const CACHE_MAX = 25
 const CACHE_KEYS_LS = 'sm-audio-cache-keys'
@@ -643,7 +886,7 @@ const clearCachedSongs = async () => {
     localStorage.removeItem(CACHE_KEYS_LS)
     showCacheToast(cleared ? `缓存已清除（${cleared} 项）` : '缓存已清除')
   } catch (e) {
-    console.error('清除缓存失败:', e)
+    console.error('清除缓存失败:', e);
     showCacheToast('清除缓存失败')
   }
 }
@@ -659,78 +902,56 @@ const saveCacheKeys = (keys) => {
   localStorage.setItem(CACHE_KEYS_LS, JSON.stringify(keys))
 }
 
-// 淘汰超出 CACHE_MAX 的旧缓存
 const evictOldCache = async (cache, keys) => {
   while (keys.length > CACHE_MAX) {
-    const old = keys.shift()
+    const old = keys.shift();
     await cache.delete(old).catch(() => {
     })
   }
 }
 
-// 把 url 加入已知 key 列表（LRU：已存在则移到末尾）
 const touchCacheKey = (url) => {
-  const keys = getCacheKeys()
+  const keys = getCacheKeys();
   const idx = keys.indexOf(url)
-  if (idx !== -1) keys.splice(idx, 1)
-  keys.push(url)
-  saveCacheKeys(keys)
+  if (idx !== -1) keys.splice(idx, 1);
+  keys.push(url);
+  saveCacheKeys(keys);
   return keys
 }
 
-/**
- * 解析服务器曲目的播放 src
- *   - 已缓存：直接返回 cache match 的 blob URL
- *   - 未缓存：fetch → 存入 Cache API → 返回原 url（浏览器后续从 cache 读）
- */
-// 这些格式的容器（MP4/M4A）moov atom 可能在文件末尾
-// 必须完整下载后才能解码，不能流式播放
 const MUST_PRELOAD_EXTS = new Set(['.m4a', '.aac', '.mp4'])
 
 const resolveAudioSrc = async (song) => {
   if (song.source !== 'server') return URL.createObjectURL(song.fileObj)
   const url = song.url
   const ext = song.name.substring(song.name.lastIndexOf('.')).toLowerCase()
-
   try {
     const cache = await caches.open(CACHE_NAME)
     const cached = await cache.match(url)
     if (cached) {
-      // 缓存命中：直接转成 blob URL
-      touchCacheKey(url)
-      const blob = await cached.blob()
+      touchCacheKey(url);
+      const blob = await cached.blob();
       return URL.createObjectURL(blob)
     }
-
-    // 未命中缓存
     if (MUST_PRELOAD_EXTS.has(ext)) {
-      // m4a/aac：必须完整下载再播放（moov 可能在文件末尾）
-      // 下载完成后同时存入缓存
       const resp = await fetch(url)
       if (!resp.ok) return url
       const blob = await resp.blob()
-      // 存入缓存（用 Response 重新包装 blob）
-      cache.put(url, new Response(blob, {
-        headers: {'Content-Type': blob.type || 'audio/mp4'}
-      })).then(() => {
-        const keys = touchCacheKey(url)
-        evictOldCache(cache, keys)
+      cache.put(url, new Response(blob, {headers: {'Content-Type': blob.type || 'audio/mp4'}})).then(() => {
+        const keys = touchCacheKey(url);
+        evictOldCache(cache, keys);
         saveCacheKeys(keys.slice(-CACHE_MAX))
       }).catch(() => {
       })
-      touchCacheKey(url)
+      touchCacheKey(url);
       return URL.createObjectURL(blob)
     }
-
-    // 其他格式（mp3/flac/ogg）：支持流式播放，直接返回 url，后台缓存
-    cacheAudioInBackground(cache, url)
+    cacheAudioInBackground(cache, url);
     return url
-
   } catch {
-    // caches API 不可用时降级：m4a 仍需完整下载
     if (MUST_PRELOAD_EXTS.has(ext)) {
       try {
-        const blob = await fetch(url).then(r => r.blob())
+        const blob = await fetch(url).then(r => r.blob());
         return URL.createObjectURL(blob)
       } catch {
         return url
@@ -742,72 +963,42 @@ const resolveAudioSrc = async (song) => {
 
 const cacheAudioInBackground = async (cache, url) => {
   try {
-    const resp = await fetch(url)
+    const resp = await fetch(url);
     if (!resp.ok) return
     await cache.put(url, resp.clone())
-    const keys = touchCacheKey(url)
-    await evictOldCache(cache, keys)
+    const keys = touchCacheKey(url);
+    await evictOldCache(cache, keys);
     saveCacheKeys(keys.slice(-CACHE_MAX))
-  } catch { /* 缓存失败不影响播放 */
+  } catch {
   }
 }
 
-/* MIME 类型表 */
-const AUDIO_MIME = {
-  '.mp3': 'audio/mpeg',
-  '.flac': 'audio/flac',
-  '.wav': 'audio/wav',
-  '.aac': 'audio/aac',
-  '.ogg': 'audio/ogg',
-  '.m4a': 'audio/mp4',
-  '.opus': 'audio/opus',
-  '.wma': 'audio/x-ms-wma',
-}
-
-// 追踪当前 play() 返回的 Promise，暂停前必须先 await 它
-// 否则 pause() 会打断尚未 resolve 的 play()，抛 AbortError
-let _playPromise = null
-
-// 防重入令牌：每次 loadAndPlay 生成新令牌，await 结束后检查是否仍是最新调用
-// 若不是（期间有新的 loadAndPlay 被触发），则放弃本次结果
-let _loadToken = 0
+let _playPromise = null, _loadToken = 0
 
 const loadAndPlay = async (index) => {
   if (index < 0 || index >= playlist.value.length) return
-
-  // 生成本次调用的唯一令牌
   const token = ++_loadToken
-
   currentIndex.value = index
   const song = playlist.value[index]
   const audio = audioRef.value
-
-  // 移动端 autoplay policy：必须在用户手势的同步调用栈内调用 play()
-  // 在任何 await 之前先触发一次 play()，解锁媒体播放权限，然后立即 pause
   try {
-    const unlockPromise = audio.play()
-    audio.pause()
-    if (unlockPromise) unlockPromise.catch(() => {
+    const up = audio.play();
+    audio.pause();
+    if (up) up.catch(() => {
     })
-  } catch (_) { /* 忽略解锁失败 */
+  } catch (_) {
   }
-
-  // 先等正在进行的 play() resolve，再 pause，避免 AbortError
   if (_playPromise) {
     try {
       await _playPromise
     } catch {
     }
-    _playPromise = null
+    ;_playPromise = null
   }
   audio.pause()
-
-  // 重置本地状态，等待新曲目加载
-  bufferPercent.value = 0
-  duration.value = 0
+  bufferPercent.value = 0;
+  duration.value = 0;
   currentTime.value = 0
-
-  // 获取新 src（可能耗时：m4a 需完整 fetch）
   let src
   if (song.source === 'server') {
     src = await resolveAudioSrc(song)
@@ -821,49 +1012,39 @@ const loadAndPlay = async (index) => {
       src = URL.createObjectURL(song.fileObj)
     }
   }
-
-  // await 期间若有新的 loadAndPlay 被触发，放弃本次结果，释放已创建的 blob
   if (token !== _loadToken) {
-    if (src.startsWith('blob:')) URL.revokeObjectURL(src)
+    if (src.startsWith('blob:')) URL.revokeObjectURL(src);
     return
   }
-
-  // 释放旧 blob URL（在确定要使用新 src 之后再 revoke，避免过早释放）
   if (audio.src?.startsWith('blob:')) URL.revokeObjectURL(audio.src)
-
-  // 赋值 audio.src —— 浏览器规范：赋值时自动触发内部 load 算法
   audio.src = src
   if (src.startsWith('blob:')) bufferPercent.value = 100
   audio.volume = volume.value
-
   try {
-    _playPromise = audio.play()
-    await _playPromise
+    _playPromise = audio.play();
+    await _playPromise;
     _playPromise = null
-    isPlaying.value = true
+    isPlaying.value = true;
     startAlbumRotation()
   } catch (e) {
     _playPromise = null
-    if (e?.name !== 'AbortError') {
-      console.error('播放失败:', e?.message ?? e)
-    }
+    if (e?.name !== 'AbortError') console.error('播放失败:', e?.message ?? e)
     isPlaying.value = false
   }
   await loadLyrics(song)
 }
 
-/* ── 歌词解析辅助 ──────────────────────────────────────────────── */
 const lrcRegex = /\[\d{1,3}:\d{2}/
 const applyLyricsText = (text) => {
   if (!text?.trim()) return false
   if (lrcRegex.test(text)) {
-    const parsed = parseLRC(text)
+    const parsed = parseLRC(text);
     if (parsed.length) {
       lyrics.value = parsed;
       return true
     }
   } else {
-    const plain = parsePlainLyrics(text)
+    const plain = parsePlainLyrics(text);
     if (plain?.length) {
       lyrics.value = plain;
       return true
@@ -874,15 +1055,13 @@ const applyLyricsText = (text) => {
 
 const loadLyrics = async (song) => {
   lyrics.value = [];
-  currentLyricIndex.value = -1
-  audioMeta.value = null
+  currentLyricIndex.value = -1;
+  audioMeta.value = null;
   audioFileSize.value = 0
-
-  // ── 第1优先：外部 .lrc 文件 ─────────────────────────────────────
   if (song.source === 'server') {
     if (song.lrc) {
       try {
-        const text = await fetch(song.lrc).then(r => r.text())
+        const text = await fetch(song.lrc).then(r => r.text());
         if (applyLyricsText(text)) return
       } catch (e) {
         console.warn('LRC fetch 失败:', e)
@@ -893,50 +1072,42 @@ const loadLyrics = async (song) => {
     const dirPath = song.path.slice(1, -1)
     let node = allEntries.value
     for (const p of dirPath) {
-      if (node.children?.has(p)) node = node.children.get(p)
-      else {
+      if (node.children?.has(p)) node = node.children.get(p); else {
         node = null;
         break
       }
     }
     if (node?.children?.has(lrcName)) {
       try {
-        const text = await node.children.get(lrcName).fileObj.text()
+        const text = await node.children.get(lrcName).fileObj.text();
         if (applyLyricsText(text)) return
       } catch (e) {
         console.warn('LRC 读取失败:', e)
       }
     }
   }
-
-  // ── 第2优先：export.json 的 Lyrics 字段 ─────────────────────────
   if (song.metaLyrics) {
     if (applyLyricsText(song.metaLyrics)) return
   }
-
-  // ── 第3优先：音频内嵌元数据（所有格式）────────────────────────
-  const ext = song.name.substring(song.name.lastIndexOf('.')).toLowerCase()
-  if (true) {  // 全格式支持
-    try {
-      let buffer = null
-      if (song.source === 'server') {
-        const resp = await fetch(song.url)
-        if (resp.ok) {
-          buffer = await resp.arrayBuffer()
-          audioFileSize.value = buffer.byteLength
-        }
-      } else if (song.fileObj) {
-        buffer = await song.fileObj.arrayBuffer()
-        audioFileSize.value = song.fileObj.size || buffer.byteLength
+  try {
+    let buffer = null
+    if (song.source === 'server') {
+      const resp = await fetch(song.url);
+      if (resp.ok) {
+        buffer = await resp.arrayBuffer();
+        audioFileSize.value = buffer.byteLength
       }
-      if (buffer) {
-        const meta = parseAudioMetadata(buffer, song.name)
-        audioMeta.value = meta
-        if (meta.lyrics) applyLyricsText(meta.lyrics)
-      }
-    } catch (e) {
-      console.warn('M4A 元数据解析失败:', e)
+    } else if (song.fileObj) {
+      buffer = await song.fileObj.arrayBuffer();
+      audioFileSize.value = song.fileObj.size || buffer.byteLength
     }
+    if (buffer) {
+      const meta = parseAudioMetadata(buffer, song.name);
+      audioMeta.value = meta;
+      if (meta.lyrics) applyLyricsText(meta.lyrics)
+    }
+  } catch (e) {
+    console.warn('元数据解析失败:', e)
   }
 }
 
@@ -944,34 +1115,31 @@ const togglePlay = async () => {
   const audio = audioRef.value
   if (!audio || !currentSong.value) return
   if (isPlaying.value) {
-    // 必须先 await 当前 play() Promise，再 pause，否则抛 AbortError
     if (_playPromise) {
       try {
         await _playPromise
       } catch {
       }
-      _playPromise = null
+      ;_playPromise = null
     }
-    audio.pause()
-    isPlaying.value = false
+    audio.pause();
+    isPlaying.value = false;
     stopAlbumRotation()
   } else {
     try {
-      _playPromise = audio.play()
-      await _playPromise
-      _playPromise = null
-      isPlaying.value = true
+      _playPromise = audio.play();
+      await _playPromise;
+      _playPromise = null;
+      isPlaying.value = true;
       startAlbumRotation()
     } catch (e) {
-      _playPromise = null
-      if (e?.name !== 'AbortError') {
-        console.error('togglePlay 失败:', e?.message ?? e)
-      }
+      _playPromise = null;
+      if (e?.name !== 'AbortError') console.error('togglePlay 失败:', e?.message ?? e)
     }
   }
 }
 const prevSong = () => {
-  if (!playlist.value.length) return
+  if (!playlist.value.length) return;
   loadAndPlay((currentIndex.value - 1 + playlist.value.length) % playlist.value.length)
 }
 const nextSong = (fromEnd = false) => {
@@ -982,8 +1150,7 @@ const nextSong = (fromEnd = false) => {
   }
   if (playMode.value === 'shuffle') {
     let idx = Math.floor(Math.random() * playlist.value.length)
-    if (playlist.value.length > 1 && idx === currentIndex.value)
-      idx = (idx + 1) % playlist.value.length
+    if (playlist.value.length > 1 && idx === currentIndex.value) idx = (idx + 1) % playlist.value.length
     loadAndPlay(idx)
   } else {
     loadAndPlay((currentIndex.value + 1) % playlist.value.length)
@@ -991,39 +1158,26 @@ const nextSong = (fromEnd = false) => {
 }
 const toggleFavorite = async () => {
   if (!currentSong.value) return
-  const song = currentSong.value
-  const n = song.name
-  const wasFav = favorites.value.has(n)
-
-  // 本地状态立即更新
-  if (wasFav) favorites.value.delete(n)
-  else favorites.value.add(n)
-
-  // 服务器模式：调接口持久化
+  const song = currentSong.value, n = song.name, wasFav = favorites.value.has(n)
+  if (wasFav) favorites.value.delete(n); else favorites.value.add(n)
   if (sourceMode.value === 'server' && serverBase.value) {
     try {
-      if (!wasFav) {
-        // 添加收藏
-        await fetch(`/api/favorite/add`, {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify(song),
-        })
-      } else {
-        // 取消收藏
-        await fetch(`/api/favorite/remove`, {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({url: song.url, name: song.name}),
-        })
-      }
+      if (!wasFav) await fetch(`/api/favorite/add`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(song)
+      })
+      else await fetch(`/api/favorite/remove`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({url: song.url, name: song.name})
+      })
     } catch (e) {
       console.error('收藏接口错误:', e)
     }
   }
 }
 
-// ── 我的收藏 ──────────────────────────────
 const showFavorites = ref(false)
 const favoritesList = ref([])
 const favLoading = ref(false)
@@ -1037,15 +1191,12 @@ const loadFavorites = async () => {
   favLoading.value = true;
   favError.value = ''
   try {
-    const res = await fetch(`/api/favorite/data`)
+    const res = await fetch(`/api/favorite/data`);
     const data = await res.json()
     if (data.success) {
-      favoritesList.value = data.data
-      // 同步本地收藏标记
+      favoritesList.value = data.data;
       data.data.forEach(s => favorites.value.add(s.name))
-    } else {
-      favError.value = data.error || '获取收藏失败'
-    }
+    } else favError.value = data.error || '获取收藏失败'
   } catch (e) {
     favError.value = `请求失败: ${e.message}`
   } finally {
@@ -1055,7 +1206,7 @@ const loadFavorites = async () => {
 
 const toggleFavPanel = () => {
   if (!showFavorites.value) {
-    showFavorites.value = true
+    showFavorites.value = true;
     loadFavorites()
   } else {
     showFavorites.value = false
@@ -1063,11 +1214,10 @@ const toggleFavPanel = () => {
 }
 
 const playFromFavorites = async (song) => {
-  // 将收藏列表的音频项作为 playlist，并播放选中的
   const audioList = favoritesList.value.filter(e => e.isAudio !== false)
   playlist.value = audioList
   const idx = audioList.findIndex(e => e.url === song.url || e.name === song.name)
-  currentIndex.value = idx >= 0 ? idx : 0
+  currentIndex.value = idx >= 0 ? idx : 0;
   showPlayer.value = true
   await loadAndPlay(currentIndex.value)
 }
@@ -1075,63 +1225,57 @@ const closePlayer = () => {
   showPlayer.value = false
 }
 
-// 计算已缓冲（下载）进度
 const updateBufferedPercent = () => {
   const audio = audioRef.value
   if (!audio) {
-    bufferPercent.value = 0
+    bufferPercent.value = 0;
     return
   }
   const dur = audio.duration
   if (!Number.isFinite(dur) || dur <= 0) {
-    bufferPercent.value = 0
+    bufferPercent.value = 0;
     return
   }
   try {
     const ranges = audio.buffered
     if (!ranges || ranges.length === 0) {
-      bufferPercent.value = 0
+      bufferPercent.value = 0;
       return
     }
     let end = 0
-    for (let i = 0; i < ranges.length; i++) {
-      end = Math.max(end, ranges.end(i))
-    }
+    for (let i = 0; i < ranges.length; i++) end = Math.max(end, ranges.end(i))
     const pct = Math.min(100, (end / dur) * 100)
-    // readyState 4 或缓冲已覆盖全长，直接判定为 100%
     bufferPercent.value = (audio.readyState >= 4 || end >= dur - 0.25) ? 100 : pct
   } catch {
     bufferPercent.value = 0
   }
 }
 
-// audio 事件
 const onAudioEnded = () => {
   if (sleepMinutes.value === -1) {
-    audioRef.value?.pause()
-    isPlaying.value = false
-    stopAlbumRotation()
-    sleepMinutes.value = 0
-    sleepEndTime.value = 0
+    audioRef.value?.pause();
+    isPlaying.value = false;
+    stopAlbumRotation();
+    sleepMinutes.value = 0;
+    sleepEndTime.value = 0;
     return
   }
   nextSong(true)
 }
 const onLoadedMetadata = () => {
-  duration.value = audioRef.value?.duration || 0
+  duration.value = audioRef.value?.duration || 0;
   updateBufferedPercent()
 }
 const onCanPlayThrough = () => {
   bufferPercent.value = 100
 }
 const onTimeUpdate = () => {
-  if (!isDragging.value) currentTime.value = audioRef.value?.currentTime || 0
-  updateLyric()
+  if (!isDragging.value) currentTime.value = audioRef.value?.currentTime || 0;
+  updateLyric();
   updateBufferedPercent()
 }
 const onProgress = () => updateBufferedPercent()
 
-// 歌词滚动
 const updateLyric = () => {
   if (!lyrics.value.length) return
   const idx = findCurrentLyricIndex(lyrics.value, currentTime.value)
@@ -1139,7 +1283,7 @@ const updateLyric = () => {
     currentLyricIndex.value = idx
     nextTick(() => {
       const pv = playerViewRef.value
-      scrollLyric(pv?.lyricsContainerRef, idx)
+      scrollLyric(pv?.lyricsContainerRef, idx);
       scrollLyric(pv?.mobileLyricsRef, idx)
     })
   }
@@ -1156,24 +1300,19 @@ const onLyricSeek = (time) => {
 
 const removeFromPlaylist = (index) => {
   if (index < 0 || index >= playlist.value.length) return
-  const wasPlaying = isPlaying.value
-  // 如果删除的是当前播放歌曲
   if (index === currentIndex.value) {
-    audioRef.value?.pause()
-    isPlaying.value = false
+    audioRef.value?.pause();
+    isPlaying.value = false;
     stopAlbumRotation()
     playlist.value.splice(index, 1)
-    if (playlist.value.length === 0) {
-      closePlayer()
-    } else {
-      // 播放删除位置的下一首（或最后一首）
-      const nextIdx = Math.min(index, playlist.value.length - 1)
-      currentIndex.value = -1 // 强制重载
+    if (playlist.value.length === 0) closePlayer()
+    else {
+      const nextIdx = Math.min(index, playlist.value.length - 1);
+      currentIndex.value = -1;
       loadAndPlay(nextIdx)
     }
   } else {
-    playlist.value.splice(index, 1)
-    // 修正 currentIndex
+    playlist.value.splice(index, 1);
     if (index < currentIndex.value) currentIndex.value--
   }
 }
@@ -1186,39 +1325,33 @@ const getProgressRatio = (event, el) => {
   const x = event.touches ? event.touches[0].clientX : event.clientX
   return Math.max(0, Math.min(1, (x - rect.left) / rect.width))
 }
-
-// PlayerView 里的 seek / drag-start 事件传来原生 MouseEvent/TouchEvent
-// 需从 playerViewRef 拿到对应的进度条 DOM 元素
 const getProgressEl = () => {
-  const pv = playerViewRef.value
+  const pv = playerViewRef.value;
   if (!pv) return null
-  // 手机端 mobileProgressRef 有真实 DOM 则优先（桌面栏被 display:none 时其 getBoundingClientRect().width === 0）
   const mobile = pv.mobileProgressRef?.value ?? pv.mobileProgressRef
   const desktop = pv.progressBarRef?.value ?? pv.progressBarRef
   if (mobile && mobile.getBoundingClientRect().width > 0) return mobile
   return desktop
 }
-
 const onSeek = (event) => {
-  const el = getProgressEl()
-  if (!el) return
-  const ratio = getProgressRatio(event, el)
-  audioRef.value.currentTime = ratio * duration.value
+  const el = getProgressEl();
+  if (!el) return;
+  const ratio = getProgressRatio(event, el);
+  audioRef.value.currentTime = ratio * duration.value;
   currentTime.value = ratio * duration.value
 }
-
 const onDragStart = (event) => {
   isDragging.value = true
-  document.addEventListener('mousemove', onDragMove)
+  document.addEventListener('mousemove', onDragMove);
   document.addEventListener('mouseup', stopDrag)
-  document.addEventListener('touchmove', onDragMove, {passive: false})
+  document.addEventListener('touchmove', onDragMove, {passive: false});
   document.addEventListener('touchend', stopDrag)
   onDragMove(event)
 }
 const onDragMove = (event) => {
-  if (!isDragging.value) return
+  if (!isDragging.value) return;
   if (event.cancelable) event.preventDefault()
-  const el = getProgressEl()
+  const el = getProgressEl();
   if (!el) return
   currentTime.value = getProgressRatio(event, el) * duration.value
 }
@@ -1227,12 +1360,11 @@ const stopDrag = () => {
     audioRef.value.currentTime = currentTime.value;
     isDragging.value = false
   }
-  document.removeEventListener('mousemove', onDragMove)
+  document.removeEventListener('mousemove', onDragMove);
   document.removeEventListener('mouseup', stopDrag)
-  document.removeEventListener('touchmove', onDragMove)
+  document.removeEventListener('touchmove', onDragMove);
   document.removeEventListener('touchend', stopDrag)
 }
-
 const onVolumeChange = (event) => {
   volume.value = parseFloat(event.target.value)
   if (audioRef.value) audioRef.value.volume = volume.value
@@ -1243,12 +1375,12 @@ const onVolumeChange = (event) => {
 // 专辑旋转
 // =============================================
 const startAlbumRotation = () => {
-  if (rotationRafId) return
+  if (rotationRafId) return;
   lastTimestamp = null
   const animate = (ts) => {
     if (!lastTimestamp) lastTimestamp = ts
     albumRotation.value = (albumRotation.value + (ts - lastTimestamp) * 0.018) % 360
-    lastTimestamp = ts
+    lastTimestamp = ts;
     rotationRafId = requestAnimationFrame(animate)
   }
   rotationRafId = requestAnimationFrame(animate)
@@ -1261,55 +1393,56 @@ const stopAlbumRotation = () => {
   }
 }
 
-// 把主题变量同步到 document.body，使 Teleport 到 body 的子组件也能继承 CSS 变量
 const applyThemeToBody = (vars) => {
   Object.entries(vars).forEach(([k, v]) => document.body.style.setProperty(k, v))
 }
 watch(themeVars, applyThemeToBody, {immediate: true})
 
-
-/* ── 键盘快捷键 ──────────────────────────────────────────── */
 const seekBy = (delta) => {
-  const audio = audioRef.value
+  const audio = audioRef.value;
   if (!audio || !duration.value) return
   const next = Math.min(Math.max(audio.currentTime + delta, 0), duration.value)
-  audio.currentTime = next
+  audio.currentTime = next;
   currentTime.value = next
 }
-
 const onKeyDown = (e) => {
-  // 焦点在输入框/文本区域时不拦截
   const tag = document.activeElement?.tagName
   if (tag === 'INPUT' || tag === 'TEXTAREA') return
-
   switch (e.key) {
     case 'ArrowRight':
-      e.preventDefault()
-      seekBy(3)
+      e.preventDefault();
+      seekBy(3);
       break
     case 'ArrowLeft':
-      e.preventDefault()
-      seekBy(-3)
+      e.preventDefault();
+      seekBy(-3);
       break
     case ' ':
-      // 空格：播放/暂停（仅有歌曲时响应）
       if (currentSong.value) {
-        e.preventDefault()
+        e.preventDefault();
         togglePlay()
       }
+      ;
       break
   }
 }
 
 onMounted(() => {
   document.addEventListener('keydown', onKeyDown)
+  window.addEventListener('resize', onBgResize)
+  if (CANVAS_THEMES.has(currentThemeId.value)) {
+    nextTick(() => startBgCanvas(currentThemeId.value))
+  }
 })
 
 onUnmounted(() => {
   stopAlbumRotation()
+  stopBgCanvas()
   if (sleepTimerId) clearTimeout(sleepTimerId)
   if (cacheToastTimer) clearTimeout(cacheToastTimer)
+  if (_bgResizeTimer) clearTimeout(_bgResizeTimer)
   document.removeEventListener('keydown', onKeyDown)
+  window.removeEventListener('resize', onBgResize)
   document.removeEventListener('mousemove', onDragMove)
   document.removeEventListener('mouseup', stopDrag)
   document.removeEventListener('touchmove', onDragMove)
@@ -1319,8 +1452,21 @@ onUnmounted(() => {
 
 <template>
   <div class="app-wrapper"
-       :style="{ ...themeVars, '--minibar-h': (currentSong && !showPlayer) ? 'calc(100px + env(safe-area-inset-bottom, 0px))' : '0px' }">
-    <!-- 动态背景 -->
+       :style="{
+         ...themeVars,
+         '--minibar-h': (currentSong && !showPlayer) ? 'calc(100px + env(safe-area-inset-bottom, 0px))' : '0px',
+         '--t-bg-image': CANVAS_THEMES.has(currentThemeId) ? 'none' : (themeVars['--t-bg-image'] || 'none')
+       }">
+
+    <!-- 动态 Canvas 背景（四大自然主题） -->
+    <canvas
+        v-if="CANVAS_THEMES.has(currentThemeId)"
+        ref="bgCanvasRef"
+        class="bg-canvas"
+        aria-hidden="true"
+    />
+
+    <!-- 静态背景装饰（daylight/cyber 主题保留） -->
     <div class="bg-orb orb1"></div>
     <div class="bg-orb orb2"></div>
     <div class="bg-orb orb3"></div>
@@ -1343,7 +1489,6 @@ onUnmounted(() => {
         :search-results="searchResults"
         :is-search-mode="isSearchMode"
         :has-mini-bar="!!currentSong && !showPlayer"
-        :cache-supported="cacheSupported"
         @play-audio="({ entry, visibleList }) => playAudio(entry, visibleList)"
         @enter-folder="enterFolder"
         @go-back="goBack"
@@ -1373,23 +1518,18 @@ onUnmounted(() => {
             </svg>
           </button>
         </div>
-
-        <div v-if="favLoading" class="fav-loading">
-          <span class="fav-spinner"></span>
-          <span>加载中...</span>
-        </div>
+        <div v-if="favLoading" class="fav-loading"><span class="fav-spinner"></span><span>加载中...</span></div>
         <div v-else-if="favError" class="fav-error">{{ favError }}</div>
         <div v-else-if="favoritesList.length === 0" class="fav-empty">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
             <path
                 d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
           </svg>
-          <p>暂无收藏</p>
-          <span>在播放页面点击心形图标收藏歌曲</span>
+          <p>暂无收藏</p><span>在播放页面点击心形图标收藏歌曲</span>
         </div>
         <div v-else class="fav-list">
-          <div v-for="(song, i) in favoritesList" :key="song.url || song.name"
-               class="fav-item" @click="playFromFavorites(song)">
+          <div v-for="(song, i) in favoritesList" :key="song.url || song.name" class="fav-item"
+               @click="playFromFavorites(song)">
             <div class="fav-icon">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                 <path d="M9 18V5l12-2v13"/>
@@ -1452,7 +1592,7 @@ onUnmounted(() => {
       />
     </Transition>
 
-    <!-- 底部迷你播放栏（有歌曲时始终显示，播放页打开时隐藏） -->
+    <!-- 底部迷你播放栏 -->
     <Transition name="minibar-slide">
       <MiniBar
           v-if="currentSong && !showPlayer"
@@ -1507,7 +1647,17 @@ onUnmounted(() => {
   transition: background 0.5s;
 }
 
-/* backdrop-filter 浏览器兼容：-webkit- 前缀已在各组件内联加入 */
+/* ── Canvas 全屏背景 ── */
+.bg-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
+  display: block;
+}
+
 .bg-orb {
   position: absolute;
   border-radius: 50%;
@@ -1515,6 +1665,7 @@ onUnmounted(() => {
   opacity: 0.14;
   pointer-events: none;
   transition: background 0.6s;
+  z-index: 1;
 }
 
 .orb1 {
@@ -1571,6 +1722,7 @@ onUnmounted(() => {
   inset: 0;
   background: none;
   pointer-events: none;
+  z-index: 1;
 }
 
 .cache-toast {
@@ -1579,16 +1731,15 @@ onUnmounted(() => {
   right: 18px;
   padding: 10px 14px;
   border-radius: 12px;
-  background: color-mix(in srgb, var(--t-bg-card, rgba(0,0,0,0.6)) 80%, #000);
+  background: color-mix(in srgb, var(--t-bg-card, rgba(0, 0, 0, 0.6)) 80%, #000);
   color: var(--t-text);
-  border: 1px solid var(--t-border, rgba(255,255,255,0.15));
-  box-shadow: 0 8px 30px rgba(0,0,0,0.25);
+  border: 1px solid var(--t-border, rgba(255, 255, 255, 0.15));
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
   z-index: 4000;
   font-size: 0.9rem;
   backdrop-filter: blur(10px);
 }
 
-/* 播放页过渡动画 */
 .player-slide-enter-active {
   animation: modalIn 0.42s cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -1619,7 +1770,6 @@ onUnmounted(() => {
   }
 }
 
-/* 迷你播放栏过渡 */
 .minibar-slide-enter-active {
   animation: minibarIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -1639,7 +1789,6 @@ onUnmounted(() => {
   }
 }
 
-/* 我的收藏面板 */
 .fav-panel {
   position: absolute;
   top: 0;
@@ -1837,7 +1986,6 @@ onUnmounted(() => {
   flex-shrink: 0;
 }
 
-/* 收藏面板过渡 */
 .fav-slide-enter-active {
   animation: favIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -1864,7 +2012,6 @@ onUnmounted(() => {
     right: 0;
     border-left: none;
     border-top: 1px solid var(--t-border);
-
   }
 
   @keyframes favIn {
