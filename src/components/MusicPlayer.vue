@@ -1,7 +1,6 @@
 <script setup>
 import {computed, nextTick, onMounted, onUnmounted, ref, watch} from 'vue'
 import {findCurrentLyricIndex, parseLRC} from '../utils/lrcParser.js'
-import {parseAudioMetadata} from '../utils/audioMetadata.js'
 import {parsePlainLyrics} from '../utils/m4aMetadata.js'
 import FileBrowser from './FileBrowser.vue'
 import PlayerView from './PlayerView.vue'
@@ -560,6 +559,7 @@ const duration = ref(0)
 const volume = ref(parseFloat(localStorage.getItem('sm-volume') ?? '0.8'))
 const isDragging = ref(false)
 const favorites = ref(new Set())
+const favoriteNames = computed(() => Array.from(favorites.value))
 const lyrics = ref([])
 const audioMeta = ref(null)
 const audioFileSize = ref(0)
@@ -706,6 +706,13 @@ const hasAudioInFolder = (folder) => {
 // 服务器模式
 // =============================================
 const serverBase = ref(window.location.origin)
+const buildServerUrl = (path = '') => {
+  const base = serverBase.value || window.location.origin
+  if (/^https?:\/\//i.test(path)) return path
+  const prefix = base.endsWith('/') ? base.slice(0, -1) : base
+  const suffix = path.startsWith('/') ? path : `/${path}`
+  return `${prefix}${suffix}`
+}
 const connectServer = async ({url} = {}) => {
   const base = (url || window.location.origin).replace(/\/$/, '')
   fileBrowserRef.value?.setServerLoading(true)
@@ -862,13 +869,29 @@ const playAudio = async (entry, visibleList) => {
   await loadAndPlay(currentIndex.value)
 }
 
+const addSongToNext = async (song) => {
+  if (!song) return
+  if (!playlist.value.length) {
+    playlist.value = [song]
+    currentIndex.value = 0
+    showPlayer.value = true
+    await loadAndPlay(0)
+    return
+  }
+  const insertIndex = Math.min(currentIndex.value + 1, playlist.value.length)
+  playlist.value.splice(insertIndex, 0, song)
+}
+
 const CACHE_NAME = 'sm-audio-v1'
 const CACHE_MAX = 25
 const CACHE_KEYS_LS = 'sm-audio-cache-keys'
+const MEMORY_CACHE_MAX = 12
 const cacheToast = ref('')
 let cacheToastTimer = null
 const cacheDialogMsg = ref('')
 const showCacheDialog = ref(false)
+const memoryBlobCache = new Map()
+const memoryCacheOrder = []
 
 const showCacheToast = (msg, dur = 1600) => {
   cacheToast.value = msg
@@ -891,6 +914,8 @@ const clearCachedSongs = async () => {
       await Promise.all(keys.map(req => cache.delete(req)))
       cleared = keys.length
     }
+    memoryBlobCache.clear()
+    memoryCacheOrder.length = 0
     localStorage.removeItem(CACHE_KEYS_LS)
     const msg = cleared ? `清理成功（${cleared} 项）` : '清理成功'
     showCacheToast(msg)
@@ -931,39 +956,74 @@ const touchCacheKey = (url) => {
   return keys
 }
 
+const touchMemoryKey = (url) => {
+  const idx = memoryCacheOrder.indexOf(url)
+  if (idx !== -1) memoryCacheOrder.splice(idx, 1)
+  memoryCacheOrder.push(url)
+}
+
+const rememberBlob = (url, blob) => {
+  memoryBlobCache.set(url, blob)
+  touchMemoryKey(url)
+  while (memoryCacheOrder.length > MEMORY_CACHE_MAX) {
+    const oldKey = memoryCacheOrder.shift()
+    memoryBlobCache.delete(oldKey)
+  }
+}
+
+const getMemoryBlobUrl = (url) => {
+  const blob = memoryBlobCache.get(url)
+  if (!blob) return null
+  touchMemoryKey(url)
+  return URL.createObjectURL(blob)
+}
+
 const MUST_PRELOAD_EXTS = new Set(['.m4a', '.aac', '.mp4'])
 
 const resolveAudioSrc = async (song) => {
   if (song.source !== 'server') return URL.createObjectURL(song.fileObj)
-  const url = song.url
+  const url = buildServerUrl(song.url || '')
+  const memUrl = getMemoryBlobUrl(url)
+  if (memUrl) return memUrl
   const ext = song.name.substring(song.name.lastIndexOf('.')).toLowerCase()
   try {
-    const cache = await caches.open(CACHE_NAME)
-    const cached = await cache.match(url)
-    if (cached) {
-      touchCacheKey(url);
-      const blob = await cached.blob();
-      return URL.createObjectURL(blob)
+    if (typeof caches !== 'undefined' && caches?.open) {
+      const cache = await caches.open(CACHE_NAME)
+      const cached = await cache.match(url)
+      if (cached) {
+        touchCacheKey(url);
+        const blob = await cached.blob();
+        rememberBlob(url, blob)
+        return URL.createObjectURL(blob)
+      }
+      if (MUST_PRELOAD_EXTS.has(ext)) {
+        const resp = await fetch(url)
+        if (!resp.ok) return url
+        const blob = await resp.blob()
+        cache.put(url, new Response(blob, {headers: {'Content-Type': blob.type || 'audio/mp4'}})).then(() => {
+          const keys = touchCacheKey(url);
+          evictOldCache(cache, keys);
+          saveCacheKeys(keys.slice(-CACHE_MAX))
+        }).catch(() => {
+        })
+        touchCacheKey(url);
+        rememberBlob(url, blob)
+        return URL.createObjectURL(blob)
+      }
+      cacheAudioInBackground(cache, url);
+      return url
     }
-    if (MUST_PRELOAD_EXTS.has(ext)) {
-      const resp = await fetch(url)
-      if (!resp.ok) return url
-      const blob = await resp.blob()
-      cache.put(url, new Response(blob, {headers: {'Content-Type': blob.type || 'audio/mp4'}})).then(() => {
-        const keys = touchCacheKey(url);
-        evictOldCache(cache, keys);
-        saveCacheKeys(keys.slice(-CACHE_MAX))
-      }).catch(() => {
-      })
-      touchCacheKey(url);
-      return URL.createObjectURL(blob)
-    }
-    cacheAudioInBackground(cache, url);
-    return url
+    // Cache API 不可用时的内存兜底
+    const resp = await fetch(url)
+    if (!resp.ok) return url
+    const blob = await resp.blob()
+    rememberBlob(url, blob)
+    return URL.createObjectURL(blob)
   } catch {
     if (MUST_PRELOAD_EXTS.has(ext)) {
       try {
         const blob = await fetch(url).then(r => r.blob());
+        rememberBlob(url, blob)
         return URL.createObjectURL(blob)
       } catch {
         return url
@@ -1072,7 +1132,7 @@ const loadLyrics = async (song) => {
   if (song.source === 'server') {
     if (song.lrc) {
       try {
-        const text = await fetch(song.lrc).then(r => r.text());
+        const text = await fetch(buildServerUrl(song.lrc)).then(r => r.text());
         if (applyLyricsText(text)) return
       } catch (e) {
         console.warn('LRC fetch 失败:', e)
@@ -1100,25 +1160,26 @@ const loadLyrics = async (song) => {
   if (song.metaLyrics) {
     if (applyLyricsText(song.metaLyrics)) return
   }
-  try {
-    let buffer = null
-    if (song.source === 'server') {
-      const resp = await fetch(song.url);
-      if (resp.ok) {
-        buffer = await resp.arrayBuffer();
-        audioFileSize.value = buffer.byteLength
+  if (song.source === 'server') {
+    try {
+      const urlObj = new URL(buildServerUrl(song.url || ''), window.location.origin)
+      const relPath = song.relativePath || urlObj.searchParams.get('path')
+      if (relPath) {
+        const metaResp = await fetch(buildServerUrl(`/api/metadata?path=${encodeURIComponent(relPath)}`))
+        if (metaResp.ok) {
+          const data = await metaResp.json()
+          if (data.success) {
+            audioMeta.value = data.meta
+            audioFileSize.value = data.size || 0
+            if (data.meta?.lyrics) applyLyricsText(data.meta.lyrics)
+          }
+        }
       }
-    } else if (song.fileObj) {
-      buffer = await song.fileObj.arrayBuffer();
-      audioFileSize.value = song.fileObj.size || buffer.byteLength
+    } catch (e) {
+      console.warn('元数据请求失败:', e)
     }
-    if (buffer) {
-      const meta = parseAudioMetadata(buffer, song.name);
-      audioMeta.value = meta;
-      if (meta.lyrics) applyLyricsText(meta.lyrics)
-    }
-  } catch (e) {
-    console.warn('元数据解析失败:', e)
+  } else if (song.fileObj) {
+    audioFileSize.value = song.fileObj.size || 0
   }
 }
 
@@ -1167,21 +1228,33 @@ const nextSong = (fromEnd = false) => {
     loadAndPlay((currentIndex.value + 1) % playlist.value.length)
   }
 }
-const toggleFavorite = async () => {
-  if (!currentSong.value) return
-  const song = currentSong.value, n = song.name, wasFav = favorites.value.has(n)
-  if (wasFav) favorites.value.delete(n); else favorites.value.add(n)
-  if (sourceMode.value === 'server' && serverBase.value) {
+const toggleFavorite = async (targetSong = currentSong.value) => {
+  if (!targetSong) return
+  const n = targetSong.name
+  const wasFav = favorites.value.has(n)
+  const next = new Set(favorites.value)
+  wasFav ? next.delete(n) : next.add(n)
+  favorites.value = next
+
+  if (showFavorites.value && targetSong.source === 'server') {
+    if (!wasFav) {
+      favoritesList.value = [targetSong, ...favoritesList.value.filter(s => s.name !== n)]
+    } else {
+      favoritesList.value = favoritesList.value.filter(s => s.name !== n)
+    }
+  }
+
+  if (targetSong.source === 'server') {
     try {
-      if (!wasFav) await fetch(`/api/favorite/add`, {
+      if (!wasFav) await fetch(buildServerUrl('/api/favorite/add'), {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(song)
+        body: JSON.stringify(targetSong)
       })
-      else await fetch(`/api/favorite/remove`, {
+      else await fetch(buildServerUrl('/api/favorite/remove'), {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({url: song.url, name: song.name})
+        body: JSON.stringify({url: targetSong.url, name: targetSong.name})
       })
     } catch (e) {
       console.error('收藏接口错误:', e)
@@ -1202,11 +1275,11 @@ const loadFavorites = async () => {
   favLoading.value = true;
   favError.value = ''
   try {
-    const res = await fetch(`/api/favorite/data`);
+    const res = await fetch(buildServerUrl('/api/favorite/data'));
     const data = await res.json()
     if (data.success) {
       favoritesList.value = data.data;
-      data.data.forEach(s => favorites.value.add(s.name))
+      favorites.value = new Set(data.data.map(s => s.name))
     } else favError.value = data.error || '获取收藏失败'
   } catch (e) {
     favError.value = `请求失败: ${e.message}`
@@ -1535,6 +1608,7 @@ onUnmounted(() => {
         :search-results="searchResults"
         :is-search-mode="isSearchMode"
         :has-mini-bar="!!currentSong && !showPlayer"
+        :favorite-names="favoriteNames"
         @play-audio="({ entry, visibleList }) => playAudio(entry, visibleList)"
         @enter-folder="enterFolder"
         @go-back="goBack"
@@ -1549,6 +1623,8 @@ onUnmounted(() => {
         @search-all="handleSearchAll"
         @clear-search="exitSearchMode"
         @clear-cache="clearCachedSongs"
+        @toggle-favorite="toggleFavorite"
+        @add-next="addSongToNext"
     />
 
     <!-- 我的收藏面板 -->

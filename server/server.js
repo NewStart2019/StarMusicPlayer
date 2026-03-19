@@ -19,6 +19,7 @@ import http from 'http'
 import fs from 'fs'
 import path from 'path'
 import {URL} from 'url'
+import {parseAudioMetadata} from './audioMetadata.js'
 
 // ─── 配置 ────────────────────────────────────────────────────────────────────
 
@@ -241,6 +242,57 @@ const handleFiles = (req, res, query) => {
     dir: path.relative(ROOT_DIR, targetDir) || '.',
     scannedAt: new Date().toISOString(),
     tree,
+  })
+}
+
+/**
+ * GET /api/metadata
+ *
+ * 查询参数：
+ *   path (必填) 相对于 ROOT_DIR 的文件路径
+ *
+ * 返回：
+ *   { success:true, meta:{...}, size:<bytes>, mtime:<ISO> }
+ */
+const handleMetadata = (req, res, query) => {
+  const filePath = query.get('path')
+  if (!filePath) return sendError(res, 400, '缺少 path 参数')
+
+  const absPath = safePath(filePath)
+  if (!absPath) return sendError(res, 403, '路径越界，禁止访问')
+
+  const ext = path.extname(absPath).toLowerCase()
+  if (!isAudio(ext)) return sendError(res, 400, '仅支持音频文件')
+
+  let stat
+  try {
+    stat = fs.statSync(absPath)
+  } catch {
+    return sendError(res, 404, `文件不存在: ${filePath}`)
+  }
+  if (!stat.isFile()) return sendError(res, 400, '指定路径不是文件')
+
+  let buffer
+  try {
+    const buf = fs.readFileSync(absPath)
+    buffer = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)
+  } catch (e) {
+    console.error('读取音频元数据失败:', e?.message || e)
+    return sendError(res, 500, '读取文件失败')
+  }
+
+  let meta = null
+  try {
+    meta = parseAudioMetadata(buffer, path.basename(absPath))
+  } catch (e) {
+    console.error('元数据解析失败:', e?.message || e)
+    meta = null
+  }
+  sendJSON(res, 200, {
+    success: true,
+    meta,
+    size: stat.size,
+    mtime: stat.mtime.toISOString(),
   })
 }
 
@@ -487,6 +539,7 @@ const server = http.createServer((req, res) => {
   // ── GET 路由 ────────────────────────────────────────────────────
   if (req.method === 'GET') {
     if (pathname === '/api/files') return handleFiles(req, res, searchParams)
+    if (pathname === '/api/metadata') return handleMetadata(req, res, searchParams)
     if (pathname === '/api/download') return handleDownload(req, res, searchParams)
     if (pathname === '/api/favorite/data') return handleFavoriteData(req, res)
 
@@ -498,6 +551,7 @@ const server = http.createServer((req, res) => {
         root: ROOT_DIR,
         routes: [
           {method: 'GET', path: '/api/files', description: '递归扫描目录，返回文件树 JSON'},
+          {method: 'GET', path: '/api/metadata', description: '解析音频元数据（path 相对 root）'},
           {method: 'GET', path: '/api/download', description: '下载或流式播放指定文件，支持 Range'},
           {method: 'GET', path: '/api/favorite/data', description: '返回收藏列表数组（最新在前）'},
           {method: 'POST', path: '/api/favorite/add', description: '添加歌曲到收藏（自动去重，最新在前）'},
@@ -526,6 +580,7 @@ server.listen(PORT, HOST, () => {
     console.log(`  局域网访问      → http://<本机IP>:${PORT}`)
   }
   console.log(`  文件列表        : http://${displayHost}:${PORT}/api/files`)
+  console.log(`  元数据解析      : http://${displayHost}:${PORT}/api/metadata?path=<相对路径>`)
   console.log(`  文件下载        : http://${displayHost}:${PORT}/api/download?path=<相对路径>`)
   console.log(`  收藏列表        : http://${displayHost}:${PORT}/api/favorite/data`)
   console.log(`  添加收藏(POST)  : http://${displayHost}:${PORT}/api/favorite/add`)

@@ -46,11 +46,7 @@ const latin1 = (buf, s, l) => {
 const boxType = (v, o) =>
   String.fromCharCode(u8(v, o), u8(v, o + 1), u8(v, o + 2), u8(v, o + 3))
 
-const bytes2B64 = (arr) => {
-  let s = '';
-  arr.forEach(b => s += String.fromCharCode(b));
-  return btoa(s)
-}
+const bytes2B64 = (arr) => Buffer.from(arr).toString('base64')
 
 const emptyMeta = () => ({
   title: null, artist: null, albumArtist: null, album: null,

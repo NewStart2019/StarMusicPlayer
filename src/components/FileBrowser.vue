@@ -16,12 +16,14 @@ const props = defineProps({
   searchResults: {type: Array, default: null},
   isSearchMode: {type: Boolean, default: false},
   hasMiniBar: {type: Boolean, default: false},
+  favoriteNames: {type: Array, default: () => []},
 })
 
 const emit = defineEmits([
   'play-audio', 'enter-folder', 'go-back', 'go-root', 'breadcrumb-nav',
   'folder-select', 'connect-server', 'disconnect', 'refresh-server', 'apply-theme',
   'show-favorites', 'search-all', 'clear-search', 'clear-cache',
+  'toggle-favorite', 'add-next',
 ])
 
 /* ── 本地 UI 状态 ─────────────────────────── */
@@ -63,6 +65,9 @@ const filteredEntries = computed(() => {
   if (props.isSearchMode && props.searchResults) return props.searchResults
   return props.currentEntries
 })
+
+const favoriteSet = computed(() => new Set(props.favoriteNames || []))
+const isFavorite = (entry) => favoriteSet.value.has(entry.name)
 
 
 /* ── 主题选择器点外部关闭 ─────────────────── */
@@ -326,6 +331,21 @@ onUnmounted(() => {
           </div>
           <div class="card-name">{{ entry.name }}</div>
           <div v-if="entry.type !== 'folder'" class="card-ext">{{ entry.name.split('.').pop().toUpperCase() }}</div>
+          <div v-if="entry.type !== 'folder'" class="card-actions" @click.stop>
+            <button class="action-btn" :class="{ active: isFavorite(entry) }" title="收藏"
+                    @click.stop="emit('toggle-favorite', entry)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+                <path
+                    d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+              </svg>
+            </button>
+            <button class="action-btn" title="下一首播放" @click.stop="emit('add-next', entry)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+                <path d="m5 4 10 7-10 7V4Z"/>
+                <path d="M19 5v14"/>
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
       <div v-else class="empty-hint">
@@ -1176,6 +1196,45 @@ select {
   font-family: 'Orbitron', monospace;
   flex-shrink: 0;
   letter-spacing: 0.5px;
+}
+
+.card-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 6px;
+}
+
+.action-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--t-border) 65%, transparent);
+  background: color-mix(in srgb, var(--t-bg-card) 85%, transparent);
+  color: var(--t-text2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.action-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.action-btn:hover {
+  border-color: color-mix(in srgb, var(--t-accent1) 50%, transparent);
+  color: var(--t-accent1);
+  background: color-mix(in srgb, var(--t-accent1) 12%, transparent);
+  transform: translateY(-1px);
+}
+
+.action-btn.active {
+  color: var(--t-accent1);
+  border-color: color-mix(in srgb, var(--t-accent1) 65%, transparent);
+  background: color-mix(in srgb, var(--t-accent1) 16%, transparent);
 }
 
 .playing-waves {
