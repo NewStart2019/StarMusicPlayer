@@ -701,85 +701,158 @@ function parseWAV(buf) {
   meta.format = 'WAV'
 
   if (buf.byteLength < 12) return meta
-  if (u8(view, 0) !== 0x52 || u8(view, view, 1) !== 0x49) return meta  // RIFF
 
-  const fileSize = u32le(view, 4)
-  // WAVE
-  if (u8(view, 8) !== 0x57 || u8(view, 9) !== 0x41 || u8(view, 10) !== 0x56 || u8(view, 11) !== 0x45) return meta
+  // ── 处理部分工具在 RIFF 头之前预置 ID3v2 标签的情况 ─────────────
+  // 例如：某些版本的 foobar2000 / dBpoweramp 写入的 WAV
+  let riffOffset = 0
+  if (u8(view, 0) === 0x49 && u8(view, 1) === 0x44 && u8(view, 2) === 0x33) {
+    // 文件以 "ID3" 开头，先解析预置的 ID3v2 标签，再找 RIFF
+    // ID3v2 header: 'ID3' + version(2) + flags(1) + syncsafe_size(4) = 10 bytes
+    if (buf.byteLength >= 10) {
+      const syncSafe = (v, o) =>
+        ((u8(v, o) & 0x7f) << 21) | ((u8(v, o + 1) & 0x7f) << 14) |
+        ((u8(v, o + 2) & 0x7f) << 7) | (u8(v, o + 3) & 0x7f)
+      const id3Size = 10 + syncSafe(view, 6)
+      if (id3Size < buf.byteLength) {
+        const id3Meta = parseID3v2(buf.slice(0, id3Size))
+        Object.assign(meta, id3Meta)
+        meta.format = 'WAV'
+        riffOffset = id3Size
+      }
+    }
+  }
 
-  let pos = 12
+  // ── 验证 RIFF....WAVE 魔数（完整 4 字节检查）────────────────────
+  // Bug fix: 原代码 u8(view,view,1) 第二参数误传了 view 对象，改为 u8(view,1)
+  //          原代码只检查前 2 字节 'RI'，补全 'FF' 检查
+  const r = riffOffset
+  if (buf.byteLength < r + 12) return meta
+  if (
+    u8(view, r + 0) !== 0x52 || u8(view, r + 1) !== 0x49 ||   // 'R','I'
+    u8(view, r + 2) !== 0x46 || u8(view, r + 3) !== 0x46       // 'F','F'
+  ) return meta
+
+  // 'W','A','V','E'
+  if (
+    u8(view, r + 8) !== 0x57 || u8(view, r + 9) !== 0x41 ||
+    u8(view, r + 10) !== 0x56 || u8(view, r + 11) !== 0x45
+  ) return meta
+
+  // ── 遍历 RIFF chunks ─────────────────────────────────────────────
+  let pos = r + 12
   while (pos + 8 <= buf.byteLength) {
     const chunkId = latin1(buf, pos, 4)
     const chunkSz = u32le(view, pos + 4)
     const dataStart = pos + 8
+
+    if (dataStart + chunkSz > buf.byteLength) break  // 防止越界
+
     if (chunkId === 'fmt ') {
+      // fmt chunk：音频技术参数
       if (chunkSz >= 16) {
+        // audioFormat(2) + channels(2) + sampleRate(4) + byteRate(4) + blockAlign(2) + bitsPerSample(2)
+        const bitsPerSample = u16le(view, dataStart + 14)
         meta.channels = u16le(view, dataStart + 2)
         meta.sampleRate = u32le(view, dataStart + 4)
         const byteRate = u32le(view, dataStart + 8)
         meta.bitrate = Math.round(byteRate * 8 / 1000)
+        // 存储实际位深，用于后面计算时长
+        meta._bitsPerSample = bitsPerSample || 16
       }
-    } else if (chunkId === 'id3 ' || chunkId === 'ID3 ') {
-      // Embedded ID3
-      const id3Meta = parseID3v2(buf.slice(dataStart, dataStart + chunkSz))
-      Object.assign(meta, id3Meta)
+    } else if (
+      // ID3 chunk 有多种写法，统一处理：
+      //   'id3 '  — 小写加空格（BWF 规范推荐）
+      //   'ID3 '  — 大写加空格（部分工具）
+      //   'id3\0' — 小写加 NUL（Audacity 等）
+      //   'ID3\0' — 大写加 NUL
+      (chunkId[0] === 'i' || chunkId[0] === 'I') &&
+      (chunkId[1] === 'd' || chunkId[1] === 'D') &&
+      (chunkId[2] === '3') &&
+      (chunkId[3] === ' ' || chunkId[3] === '\0')
+    ) {
+      // 内嵌 ID3v2.3.0 标签：完整解析所有帧
+      // 注意：已有预置 ID3 标签的字段不被覆盖（优先级：预置 > 内嵌 chunk）
+      const id3Buf = buf.slice(dataStart, dataStart + chunkSz)
+      const id3Meta = parseID3v2(id3Buf)
+      // 只填充尚未读取的字段（保留预置 ID3 标签的值）
+      for (const [k, v] of Object.entries(id3Meta)) {
+        if (k === 'extra') {
+          Object.assign(meta.extra, v)
+        } else if (k === 'format') {
+          // 不覆盖 format
+        } else if (v !== null && meta[k] === null) {
+          meta[k] = v
+        }
+      }
       meta.format = 'WAV'
     } else if (chunkId === 'LIST') {
-      const listType = latin1(buf, dataStart, 4)
-      if (listType === 'INFO') {
-        let p = dataStart + 4
-        const listEnd = dataStart + chunkSz
-        while (p + 8 <= listEnd) {
-          const infoId = latin1(buf, p, 4)
-          const infoSz = u32le(view, p + 4)
-          const infoVal = latin1(buf, p + 8, infoSz).replace(/\0/g, '').trim()
-          switch (infoId) {
-            case 'INAM':
-              meta.title = infoVal;
-              break
-            case 'IART':
-              meta.artist = infoVal;
-              break
-            case 'IPRD':
-              meta.album = infoVal;
-              break
-            case 'ICRD':
-              meta.year = infoVal.substring(0, 4);
-              break
-            case 'IGNR':
-              meta.genre = infoVal;
-              break
-            case 'IENG':
-              meta.composer = infoVal;
-              break
-            case 'ICMT':
-              meta.comment = infoVal;
-              break
-            case 'ISRC':
-              meta.isrc = infoVal;
-              break
-            case 'ITCH':
-              meta.encoder = infoVal;
-              break
-            case 'ICOP':
-              meta.copyright = infoVal;
-              break
-            default:
-              if (infoVal) meta.extra[infoId] = infoVal
+      // LIST INFO chunk（RIFF 原生元数据，优先级最低）
+      if (chunkSz >= 4) {
+        const listType = latin1(buf, dataStart, 4)
+        if (listType === 'INFO') {
+          let p = dataStart + 4
+          const listEnd = Math.min(dataStart + chunkSz, buf.byteLength)
+          while (p + 8 <= listEnd) {
+            const infoId = latin1(buf, p, 4)
+            const infoSz = u32le(view, p + 4)
+            if (p + 8 + infoSz > listEnd) break
+            const infoVal = latin1(buf, p + 8, infoSz).replace(/\0/g, '').trim()
+            if (infoVal) {
+              switch (infoId) {
+                case 'INAM':
+                  if (!meta.title) meta.title = infoVal;
+                  break
+                case 'IART':
+                  if (!meta.artist) meta.artist = infoVal;
+                  break
+                case 'IPRD':
+                  if (!meta.album) meta.album = infoVal;
+                  break
+                case 'ICRD':
+                  if (!meta.year) meta.year = infoVal.substring(0, 4);
+                  break
+                case 'IGNR':
+                  if (!meta.genre) meta.genre = infoVal;
+                  break
+                case 'IENG':
+                  if (!meta.composer) meta.composer = infoVal;
+                  break
+                case 'ICMT':
+                  if (!meta.comment) meta.comment = infoVal;
+                  break
+                case 'ISRC':
+                  if (!meta.isrc) meta.isrc = infoVal;
+                  break
+                case 'ITCH':
+                  if (!meta.encoder) meta.encoder = infoVal;
+                  break
+                case 'ICOP':
+                  if (!meta.copyright) meta.copyright = infoVal;
+                  break
+                default:
+                  if (!meta.extra[infoId]) meta.extra[infoId] = infoVal
+              }
+            }
+            p += 8 + infoSz + (infoSz % 2)
           }
-          p += 8 + infoSz + (infoSz % 2)
         }
       }
     } else if (chunkId === 'data') {
-      // Calculate duration from data size
+      // data chunk：根据实际位深计算时长
       if (meta.sampleRate && meta.channels) {
-        const bitsPerSample = 16  // default
-        const bytesPerSample = (meta.channels * bitsPerSample) / 8
-        if (bytesPerSample > 0) meta.duration = Math.round(chunkSz / (meta.sampleRate * bytesPerSample))
+        const bits = meta._bitsPerSample || 16
+        const bytesPerSample = (meta.channels * bits) / 8
+        if (bytesPerSample > 0) {
+          meta.duration = Math.round(chunkSz / (meta.sampleRate * bytesPerSample))
+        }
       }
     }
+
     pos = dataStart + chunkSz + (chunkSz % 2)
   }
+
+  // 清理内部临时字段
+  delete meta._bitsPerSample
   return meta
 }
 
