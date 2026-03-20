@@ -1,5 +1,6 @@
 <script setup>
 import {computed} from 'vue'
+import {useI18n} from '../utils/i18n.js'
 
 const props = defineProps({
   visible: {type: Boolean, default: false},
@@ -9,7 +10,9 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'clear-cache'])
 
-const versionText = computed(() => `软件版本 ${props.appVersion}`)
+const {t, locale, setLocale} = useI18n()
+
+const versionText = computed(() => t('version_label', {v: props.appVersion}))
 </script>
 
 <template>
@@ -18,8 +21,8 @@ const versionText = computed(() => `软件版本 ${props.appVersion}`)
       <div v-if="visible" class="settings-mask" @click.self="emit('close')">
         <div class="settings-panel">
           <header class="settings-header">
-            <h2>设置</h2>
-            <button class="settings-close" @click="emit('close')" aria-label="关闭设置">
+            <h2>{{ t('settings_title') }}</h2>
+            <button class="settings-close" @click="emit('close')" :aria-label="t('settings_title')">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <line x1="18" y1="6" x2="6" y2="18"/>
                 <line x1="6" y1="6" x2="18" y2="18"/>
@@ -28,10 +31,32 @@ const versionText = computed(() => `软件版本 ${props.appVersion}`)
           </header>
 
           <main class="settings-body">
+            <!-- Language Selection -->
+            <div class="settings-row settings-row--static">
+              <div class="row-text">
+                <div class="row-title">{{ t('language_label') }}</div>
+              </div>
+              <div class="lang-switch">
+                <button
+                    class="lang-btn"
+                    :class="{ active: locale === 'zh' }"
+                    @click="setLocale('zh')"
+                >{{ t('lang_zh') }}
+                </button>
+                <button
+                    class="lang-btn"
+                    :class="{ active: locale === 'en' }"
+                    @click="setLocale('en')"
+                >{{ t('lang_en') }}
+                </button>
+              </div>
+            </div>
+
+            <!-- Clear Cache -->
             <button class="settings-row" :disabled="!serverMode" @click="emit('clear-cache')">
               <div class="row-text">
-                <div class="row-title">清理缓存</div>
-                <div class="row-sub" v-if="!serverMode">需连接服务器后可用</div>
+                <div class="row-title">{{ t('clear_cache') }}</div>
+                <div class="row-sub" v-if="!serverMode">{{ t('server_required') }}</div>
               </div>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="m9 18 6-6-6-6"/>
@@ -132,9 +157,14 @@ const versionText = computed(() => `软件版本 ${props.appVersion}`)
   cursor: pointer;
   transition: all 0.2s;
   font-family: inherit;
+  text-align: left;
 }
 
-.settings-row:hover:enabled {
+.settings-row--static {
+  cursor: default;
+}
+
+.settings-row:hover:enabled:not(.settings-row--static) {
   border-color: var(--t-accent1, #a78bfa);
   color: var(--t-text, #fff);
   background: color-mix(in srgb, var(--t-accent1, #a78bfa) 10%, transparent);
@@ -166,6 +196,38 @@ const versionText = computed(() => `软件版本 ${props.appVersion}`)
 .row-sub {
   font-size: 0.82rem;
   color: var(--t-text3, rgba(255, 255, 255, 0.45));
+}
+
+/* ── Language Switch ── */
+.lang-switch {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.lang-btn {
+  padding: 5px 13px;
+  border-radius: 20px;
+  border: 1px solid var(--t-border, rgba(255, 255, 255, 0.15));
+  background: var(--t-overlay, rgba(255, 255, 255, 0.05));
+  color: var(--t-text2, rgba(255, 255, 255, 0.6));
+  font-family: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.lang-btn:hover {
+  border-color: var(--t-accent1, #a78bfa);
+  color: var(--t-text, #fff);
+}
+
+.lang-btn.active {
+  border-color: var(--t-accent1, #a78bfa);
+  background: color-mix(in srgb, var(--t-accent1, #a78bfa) 16%, transparent);
+  color: var(--t-accent1, #a78bfa);
+  font-weight: 600;
 }
 
 .settings-footer {

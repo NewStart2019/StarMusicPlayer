@@ -3,8 +3,10 @@ import {computed, nextTick, onMounted, onUnmounted, ref, watch} from 'vue'
 import SleepTimer from './SleepTimer.vue'
 import PlaylistPanel from './PlaylistPanel.vue'
 import MetadataPanel from './MetadataPanel.vue'
+import {useI18n} from '../utils/i18n.js'
 
-/* ── props / emits ───────────────────────────── */
+const {t} = useI18n()
+
 const props = defineProps({
   displayTitle: {type: String, required: true},
   artistName: {type: String, required: true},
@@ -36,17 +38,15 @@ const emit = defineEmits([
   'seek-by',
 ])
 
-/* ── template refs ───────────────────────────── */
 const progressBarRef = ref(null)
 const mobileProgressRef = ref(null)
 const lyricsContainerRef = ref(null)
 const mobileLyricsRef = ref(null)
 defineExpose({progressBarRef, mobileProgressRef, lyricsContainerRef, mobileLyricsRef})
 
-/* ── UI state ────────────────────────────────── */
 const showPlaylist = ref(false)
-const showLyrics = ref(false)   // 忒儂貉棵喲歾
-const showMeta = ref(false)   // 梓キ陓洘醱啣
+const showLyrics = ref(false)
+const showMeta = ref(false)
 const hasCover = computed(() => !!props.audioMeta?.cover)
 const coverSrc = computed(() => props.audioMeta?.cover || '')
 const coverFace = ref(hasCover.value)
@@ -59,15 +59,14 @@ let downGesture = null
 let lyricSheetGesture = null
 
 watch(hasCover, (v) => {
-  coverFace.value = v
+  coverFace.value = v;
   previewCover.value = false
 })
 watch(() => props.currentFilename, () => {
-  coverFace.value = hasCover.value
+  coverFace.value = hasCover.value;
   previewCover.value = false
 })
 
-/* ── 移动端检测 ──────────────────────────────── */
 const isMobile = ref(false)
 const checkMobile = () => {
   isMobile.value = window.innerWidth <= 600
@@ -81,7 +80,6 @@ onMounted(() => {
     const lockBack = () => history.pushState(null, '', location.href)
     window.addEventListener('popstate', lockBack)
     modalRef.value && (modalRef.value.__edgeLock = lockBack)
-    // 监听全局触摸，捕获阶段确保子元素也能触发
     window.addEventListener('touchstart', onEdgeTouchStart, {passive: true, capture: true})
     window.addEventListener('touchmove', onEdgeTouchMove, {passive: false, capture: true})
     window.addEventListener('touchend', onEdgeTouchEnd, {passive: true, capture: true})
@@ -106,16 +104,16 @@ const onKeyDown = (e) => {
   if (tag === 'INPUT' || tag === 'TEXTAREA') return
   switch (e.key) {
     case 'ArrowRight':
-      e.preventDefault()
-      emit('seek-by', 3)
+      e.preventDefault();
+      emit('seek-by', 3);
       break
     case 'ArrowLeft':
-      e.preventDefault()
-      emit('seek-by', -3)
+      e.preventDefault();
+      emit('seek-by', -3);
       break
     case ' ':
-      e.preventDefault()
-      emit('toggle-play')
+      e.preventDefault();
+      emit('toggle-play');
       break
   }
 }
@@ -126,17 +124,16 @@ const openCoverPreview = () => {
 const closeCoverPreview = () => {
   previewCover.value = false
 }
-
 const handleCoverTouchStart = () => {
-  if (!hasCover.value) return
+  if (!hasCover.value) return;
   longPressTimer = setTimeout(openCoverPreview, 520)
 }
 const handleCoverTouchEnd = () => {
-  if (longPressTimer) clearTimeout(longPressTimer)
+  if (longPressTimer) clearTimeout(longPressTimer);
   longPressTimer = null
 }
 const handleCoverMouseDown = () => {
-  if (!hasCover.value) return
+  if (!hasCover.value) return;
   longPressTimer = setTimeout(openCoverPreview, 520)
 }
 const handleCoverMouseUp = () => handleCoverTouchEnd()
@@ -149,41 +146,27 @@ const onEdgeTouchStart = (e) => {
   const edge = 24
   if (x > edge && x < w - edge) {
     edgeGesture = null
-  } else {
-    edgeGesture = {x, y, time: performance.now(), lastX: x, lastY: y, active: false}
-  }
-  // 顶部下滑关闭（仅移动端）
-  if (isMobile.value && y < 140) {
-    downGesture = {x, y, time: performance.now(), lastX: x, lastY: y, active: false}
-  } else {
-    downGesture = null
-  }
+  } else edgeGesture = {x, y, time: performance.now(), lastX: x, lastY: y, active: false}
+  if (isMobile.value && y < 140) downGesture = {x, y, time: performance.now(), lastX: x, lastY: y, active: false}
+  else downGesture = null
 }
-
 const onEdgeTouchMove = (e) => {
   if (!edgeGesture && !downGesture) return
   const {clientX: x, clientY: y} = e.touches[0]
   if (edgeGesture) {
-    const dx = x - edgeGesture.x
-    const dy = y - edgeGesture.y
-    edgeGesture.lastX = x
+    const dx = x - edgeGesture.x, dy = y - edgeGesture.y
+    edgeGesture.lastX = x;
     edgeGesture.lastY = y
-    if (!edgeGesture.active && Math.abs(dx) > Math.abs(dy) * 1.5 && Math.abs(dx) > 30) {
-      edgeGesture.active = true
-    }
+    if (!edgeGesture.active && Math.abs(dx) > Math.abs(dy) * 1.5 && Math.abs(dx) > 30) edgeGesture.active = true
   }
   if (downGesture) {
-    const dx = x - downGesture.x
-    const dy = y - downGesture.y
-    downGesture.lastX = x
+    const dx = x - downGesture.x, dy = y - downGesture.y
+    downGesture.lastX = x;
     downGesture.lastY = y
-    if (!downGesture.active && dy > 30 && dy > Math.abs(dx) * 1.2) {
-      downGesture.active = true
-    }
+    if (!downGesture.active && dy > 30 && dy > Math.abs(dx) * 1.2) downGesture.active = true
   }
   if ((edgeGesture && edgeGesture.active) || (downGesture && downGesture.active)) e.preventDefault()
 }
-
 const onEdgeTouchEnd = () => {
   const now = performance.now()
   if (edgeGesture) {
@@ -196,11 +179,10 @@ const onEdgeTouchEnd = () => {
     const dt = now - downGesture.time
     if (downGesture.active && dy > 90 && dt < 900) emit('close')
   }
-  edgeGesture = null
+  edgeGesture = null;
   downGesture = null
 }
 
-// 歌词抽屉（移动端）下滑关闭
 const onLyricTouchStart = (e) => {
   if (!showLyrics.value || e.touches.length !== 1) return
   const {clientX: x, clientY: y} = e.touches[0]
@@ -209,12 +191,9 @@ const onLyricTouchStart = (e) => {
 const onLyricTouchMove = (e) => {
   if (!lyricSheetGesture) return
   const {clientX: x, clientY: y} = e.touches[0]
-  const dy = y - lyricSheetGesture.y
-  const dx = x - lyricSheetGesture.x
+  const dy = y - lyricSheetGesture.y, dx = x - lyricSheetGesture.x
   lyricSheetGesture.lastY = y
-  if (!lyricSheetGesture.active && dy > 25 && dy > Math.abs(dx) * 1.2) {
-    lyricSheetGesture.active = true
-  }
+  if (!lyricSheetGesture.active && dy > 25 && dy > Math.abs(dx) * 1.2) lyricSheetGesture.active = true
   if (lyricSheetGesture.active) e.preventDefault()
 }
 const onLyricTouchEnd = () => {
@@ -226,39 +205,25 @@ const onLyricTouchEnd = () => {
 }
 
 const toggleAlbumFace = () => {
-  if (!hasCover.value) return
+  if (!hasCover.value) return;
   coverFace.value = !coverFace.value
 }
 
-const discStyle = computed(() => ({
-  transform: `rotate(${props.albumRotation}deg) scale(${coverFace.value && hasCover.value ? 0.9 : 1})`
-}))
-
+const discStyle = computed(() => ({transform: `rotate(${props.albumRotation}deg) scale(${coverFace.value && hasCover.value ? 0.9 : 1})`}))
 const coverStyle = computed(() => ({
   transform: `rotate(${props.albumRotation}deg) scale(${coverFace.value ? 1 : 0.9})`,
   backgroundImage: coverSrc.value ? `url(${coverSrc.value})` : 'none'
 }))
 
-/* ── helpers ─────────────────────────────────── */
 const fmt = (s) => {
   if (isNaN(s) || s < 0) return '00:00'
   return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}`
 }
 const dotStart = (i) => Math.max(0, props.currentIndex - 3) + i
 const playModeLabel = computed(() =>
-    ({order: '顺序播放', shuffle: '随机播放', repeat: '单曲循环'})[props.playMode])
+    ({order: t('play_order'), shuffle: t('play_shuffle'), repeat: t('play_repeat')})[props.playMode])
 
-// ── 歌词逐字填色：纯 DOM 操作，不用 :style 绑定 ─────────────────────
-// 原理：
-//   active 行：background-size 从 0% 以 CSS transition 过渡到 100%
-//              transition-duration = 该句歌词持续时长（秒）
-//              background-image 是单色 accent 渐变，配合 background-clip:text
-//   prev  行：background-size 立刻设为 100%（已播完全亮）
-//   其他行：清除所有 inline style
-//
-// 关键：不用 Vue :style 绑定，完全用 DOM 直接操作
-//   因为 Vue re-render 会覆盖 inline style，打断 CSS transition
-
+// ── Lyric fill animation (DOM-based) ──────────────────────────────────────
 const LYRIC_BASE_STYLE = [
   ['backgroundImage', 'linear-gradient(to right, var(--t-lyric-active), var(--t-lyric-active))'],
   ['backgroundRepeat', 'no-repeat'],
@@ -266,19 +231,16 @@ const LYRIC_BASE_STYLE = [
   ['backgroundClip', 'text'],
   ['webkitTextFillColor', 'transparent'],
 ]
-
 const lastLyricState = ref({idx: -1, progress: 0})
 
 const lyricProgress = (idx) => {
   if (idx < 0 || idx >= props.lyrics.length) return 0
-  const cur = props.lyrics[idx]
-  const nxt = props.lyrics[idx + 1]
+  const cur = props.lyrics[idx], nxt = props.lyrics[idx + 1]
   const dur = nxt ? Math.max(0.3, nxt.time - cur.time) : 5
   const elapsed = Math.max(0, (props.currentTime ?? 0) - cur.time)
   return dur > 0 ? Math.min(1, elapsed / dur) : 0
 }
 
-// 首次激活或切换行时重置样式
 const applyLyricStyles = (newIdx) => {
   const containers = [lyricsContainerRef.value, mobileLyricsRef.value]
   containers.forEach(container => {
@@ -293,40 +255,21 @@ const applyLyricStyles = (newIdx) => {
         const p = lyricProgress(i)
         LYRIC_BASE_STYLE.forEach(([k, v]) => el.style[k] = v)
         el.style.backgroundSize = `${p * 100}% 100%`
-        const cur = props.lyrics[i]
-        const nxt = props.lyrics[i + 1]
+        const cur = props.lyrics[i], nxt = props.lyrics[i + 1]
         const dur = nxt ? Math.max(0.3, nxt.time - cur.time) : 5
         const remain = Math.max(0.1, dur * (1 - p))
         void el.offsetWidth
         el.style.transition = `background-size ${remain}s linear`
         el.style.backgroundSize = '100% 100%'
       } else {
-        // 清空未来行样式
-        el.style.backgroundImage = ''
-        el.style.backgroundRepeat = ''
+        el.style.backgroundImage = '';
+        el.style.backgroundRepeat = '';
         el.style.backgroundSize = ''
-        el.style.backgroundClip = ''
-        el.style.webkitBackgroundClip = ''
+        el.style.backgroundClip = '';
+        el.style.webkitBackgroundClip = '';
         el.style.webkitTextFillColor = ''
       }
     })
-  })
-}
-
-// 播放进度更新时同步当前行填充，无动画，实时跟随音频
-const syncActiveLyricProgress = () => {
-  const idx = props.currentLyricIndex
-  if (idx < 0) return
-  const p = lyricProgress(idx)
-  const containers = [lyricsContainerRef.value, mobileLyricsRef.value]
-  containers.forEach(container => {
-    if (!container) return
-    const lines = container.querySelectorAll('.lyric-line')
-    const el = lines[idx]
-    if (!el) return
-    LYRIC_BASE_STYLE.forEach(([k, v]) => el.style[k] = v)
-    el.style.transition = 'none'
-    el.style.backgroundSize = `${p * 100}% 100%`
   })
 }
 
@@ -336,46 +279,38 @@ watch(() => props.currentLyricIndex, async (newIdx) => {
   lastLyricState.value = {idx: newIdx ?? -1, progress: lyricProgress(newIdx ?? -1)}
 })
 
-// 同一行内若出现大跳跃（拖动进度），重新应用起始进度并重新过渡
 watch(() => props.currentTime, () => {
   const idx = props.currentLyricIndex
   if (idx < 0) return
   const p = lyricProgress(idx)
   const {idx: lastIdx, progress: lastP} = lastLyricState.value
-  if (idx !== lastIdx || Math.abs(p - lastP) > 0.25) {
-    applyLyricStyles(idx)
-  }
+  if (idx !== lastIdx || Math.abs(p - lastP) > 0.25) applyLyricStyles(idx)
   lastLyricState.value = {idx, progress: p}
 })
 
-// 打开歌词抽屉时，立即滚动到当前行
 watch(showLyrics, async (v) => {
   if (!v) return
   await nextTick()
   const scrollToActive = (container) => {
     if (!container) return
     const el = container.querySelector('.lyric-line.active')
-    if (el) container.scrollTo({
-      top: el.offsetTop - container.clientHeight / 2 + el.clientHeight / 2,
-      behavior: 'auto'
-    })
+    if (el) container.scrollTo({top: el.offsetTop - container.clientHeight / 2 + el.clientHeight / 2, behavior: 'auto'})
   }
   scrollToActive(mobileLyricsRef.value)
 })
 
-// 切歌时重置所有歌词行样式
 watch(() => props.lyrics, async () => {
   await nextTick()
   const containers = [lyricsContainerRef.value, mobileLyricsRef.value]
   containers.forEach(container => {
     if (!container) return
     container.querySelectorAll('.lyric-line').forEach(el => {
-      el.style.transition = ''
-      el.style.backgroundImage = ''
+      el.style.transition = '';
+      el.style.backgroundImage = '';
       el.style.backgroundRepeat = ''
-      el.style.backgroundSize = ''
+      el.style.backgroundSize = '';
       el.style.backgroundClip = ''
-      el.style.webkitBackgroundClip = ''
+      el.style.webkitBackgroundClip = '';
       el.style.webkitTextFillColor = ''
     })
   })
@@ -383,38 +318,32 @@ watch(() => props.lyrics, async () => {
 </script>
 
 <template>
-  <div class="player-modal"
-       ref="modalRef">
+  <div class="player-modal" ref="modalRef">
     <div class="player-inner">
 
       <Transition name="cover-preview">
         <div v-if="previewCover" class="cover-preview" @click="closeCoverPreview">
-          <img :src="coverSrc" alt="封面预览"/>
+          <img :src="coverSrc" alt="Cover Preview"/>
         </div>
       </Transition>
 
-      <!-- 收起按钮 -->
       <button v-if="!edgeSwipeEnabled || !isMobile" class="btn-close" @click="emit('close')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
           <polyline points="6 9 12 15 18 9"/>
         </svg>
       </button>
 
-      <!-- ══════════════ 桌面左侧 ══════════════ -->
+      <!-- ══ Desktop Left ══ -->
       <div class="player-left">
         <div class="song-info">
           <h1 class="song-title">{{ displayTitle }}</h1>
           <p class="song-artist">{{ artistName }}</p>
         </div>
         <div class="album-wrap" :class="{ 'has-cover': hasCover, 'face-cover': coverFace }"
-             :title="hasCover ? '点击切换封面 / 胶片' : ''"
+             :title="hasCover ? '' : ''"
              @click="hasCover && toggleAlbumFace()"
-             @touchstart="handleCoverTouchStart"
-             @touchend="handleCoverTouchEnd"
-             @touchcancel="handleCoverTouchEnd"
-             @mousedown="handleCoverMouseDown"
-             @mouseup="handleCoverMouseUp"
-             @mouseleave="handleCoverMouseLeave">
+             @touchstart="handleCoverTouchStart" @touchend="handleCoverTouchEnd" @touchcancel="handleCoverTouchEnd"
+             @mousedown="handleCoverMouseDown" @mouseup="handleCoverMouseUp" @mouseleave="handleCoverMouseLeave">
           <div class="album-ring ring-outer"></div>
           <div class="album-ring ring-mid"></div>
           <div class="album-face album-disc" :class="{ active: !coverFace || !hasCover }" :style="discStyle">
@@ -484,7 +413,7 @@ watch(() => props.lyrics, async () => {
             </svg>
           </button>
           <button class="ctrl-btn ctrl-info" :class="{ active:showMeta }" @click.stop="showMeta=!showMeta"
-                  title="查看标签信息">
+                  :title="t('tag_info')">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="10"/>
               <line x1="12" y1="8" x2="12" y2="8" stroke-width="2.5"/>
@@ -534,26 +463,22 @@ watch(() => props.lyrics, async () => {
           </div>
         </div>
         <div class="playlist-dots">
-      <span v-for="(_,i) in playlist.slice(Math.max(0,currentIndex-3),Math.min(playlist.length,currentIndex+4))"
-            :key="i" class="dot" :class="{ active:dotStart(i)===currentIndex }"
-            @click="emit('load-index',dotStart(i))"></span>
+          <span v-for="(_,i) in playlist.slice(Math.max(0,currentIndex-3),Math.min(playlist.length,currentIndex+4))"
+                :key="i" class="dot" :class="{ active:dotStart(i)===currentIndex }"
+                @click="emit('load-index',dotStart(i))"></span>
         </div>
       </div>
 
-      <!-- ══════════════ 桌面标签信息面板 ══════════════ -->
+      <!-- Desktop metadata panel -->
       <MetadataPanel
           v-if="!isMobile"
-          :show="showMeta"
-          :meta="audioMeta"
-          :filename="currentFilename"
-          :file-size="fileSize"
-          mode="side"
-          @close="showMeta=false"
-      />
+          :show="showMeta" :meta="audioMeta" :filename="currentFilename" :file-size="fileSize"
+          mode="side" @close="showMeta=false"/>
 
-      <!-- ══════════════ 桌面右侧歌词 ══════════════ -->
+      <!-- ══ Desktop Lyrics ══ -->
       <div class="player-right desktop-lyrics">
-        <div class="lyrics-header"><span class="lyrics-label">LYRICS</span>
+        <div class="lyrics-header">
+          <span class="lyrics-label">{{ t('lyrics_label') }}</span>
           <div class="lyrics-deco"></div>
         </div>
         <div v-if="lyrics.length>0" class="lyrics-container" ref="lyricsContainerRef">
@@ -572,27 +497,22 @@ watch(() => props.lyrics, async () => {
               <circle cx="18" cy="16" r="3"/>
             </svg>
           </div>
-          <p>暂无歌词</p><span>将同名 .lrc 文件放在歌曲同目录下</span>
+          <p>{{ t('no_lyrics') }}</p>
+          <span>{{ t('lyrics_hint') }}</span>
         </div>
       </div>
 
-      <!-- ══════════════ 手机端 ══════════════ -->
+      <!-- ══ Mobile ══ -->
       <div class="mobile-player">
 
-        <!-- 撃中 -->
         <div class="m-cover-zone">
-          <div class="album-wrap m-album" :class="{ 'has-cover': hasCover, 'face-cover': coverFace }"
-               :title="hasCover ? '点击切换封面 / 胶片' : ''"
+          <div class="album-wrap m-album" :class="{ 'has-cover':hasCover, 'face-cover':coverFace }"
                @click="hasCover && toggleAlbumFace()"
-               @touchstart="handleCoverTouchStart"
-               @touchend="handleCoverTouchEnd"
-               @touchcancel="handleCoverTouchEnd"
-               @mousedown="handleCoverMouseDown"
-               @mouseup="handleCoverMouseUp"
-               @mouseleave="handleCoverMouseLeave">
+               @touchstart="handleCoverTouchStart" @touchend="handleCoverTouchEnd" @touchcancel="handleCoverTouchEnd"
+               @mousedown="handleCoverMouseDown" @mouseup="handleCoverMouseUp" @mouseleave="handleCoverMouseLeave">
             <div class="album-ring ring-outer"></div>
             <div class="album-ring ring-mid"></div>
-            <div class="album-face album-disc" :class="{ active: !coverFace || !hasCover }" :style="discStyle">
+            <div class="album-face album-disc" :class="{ active:!coverFace||!hasCover }" :style="discStyle">
               <div class="disc-grooves">
                 <div class="disc-groove" v-for="i in 8" :key="i"></div>
               </div>
@@ -604,14 +524,13 @@ watch(() => props.lyrics, async () => {
                 </svg>
               </div>
             </div>
-            <div v-if="hasCover" class="album-face album-cover" :class="{ active: coverFace }" :style="coverStyle">
+            <div v-if="hasCover" class="album-face album-cover" :class="{ active:coverFace }" :style="coverStyle">
               <div class="cover-hole"></div>
             </div>
             <div class="album-glow" :class="{ active:isPlaying }"></div>
           </div>
         </div>
 
-        <!-- 信息行：标题 + 辅助动作 -->
         <div class="m-meta-row">
           <div class="m-meta-text">
             <h1 class="song-title m-title">{{ displayTitle }}</h1>
@@ -652,7 +571,6 @@ watch(() => props.lyrics, async () => {
           </div>
         </div>
 
-        <!-- 进度条 -->
         <div class="progress-section m-prog">
           <div class="time-display"><span>{{ fmt(currentTime) }}</span><span>{{ fmt(duration) }}</span></div>
           <div class="progress-bar" ref="mobileProgressRef"
@@ -665,9 +583,8 @@ watch(() => props.lyrics, async () => {
           </div>
         </div>
 
-        <!-- 主控制行：后退3s | 上一首 | 播放/暂停 | 下一首 | 快进3s -->
         <div class="m-controls-row">
-          <button class="ctrl-btn m-seek-btn" @click="emit('seek-by',-3)" title="后退3秒">
+          <button class="ctrl-btn m-seek-btn" @click="emit('seek-by',-3)" :title="t('seek_back')">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M2.5 12a9.5 9.5 0 1 1 1.4 5"/>
               <path d="M2.5 17V12h5" fill="currentColor" stroke="none"/>
@@ -697,7 +614,7 @@ watch(() => props.lyrics, async () => {
               <line x1="19" y1="4" x2="19" y2="20" stroke="currentColor" stroke-width="2" fill="none"/>
             </svg>
           </button>
-          <button class="ctrl-btn m-seek-btn" @click="emit('seek-by',3)" title="快进3秒">
+          <button class="ctrl-btn m-seek-btn" @click="emit('seek-by',3)" :title="t('seek_fwd')">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21.5 12a9.5 9.5 0 1 0-1.4 5"/>
               <path d="M21.5 17V12h-5" fill="currentColor" stroke="none"/>
@@ -708,7 +625,6 @@ watch(() => props.lyrics, async () => {
           </button>
         </div>
 
-        <!-- 工具栏：歌词 | 音量 | 定时 | 列表 -->
         <div class="m-toolbar">
           <button class="m-tool" :class="{ active:showLyrics }" @click.stop="showLyrics=!showLyrics">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -716,7 +632,7 @@ watch(() => props.lyrics, async () => {
               <line x1="3" y1="12" x2="15" y2="12"/>
               <line x1="3" y1="18" x2="18" y2="18"/>
             </svg>
-            <span>歌词</span>
+            <span>{{ t('lyrics_btn') }}</span>
           </button>
           <button class="m-tool" :class="{ active:showMeta }" @click.stop="showMeta=!showMeta">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -724,9 +640,8 @@ watch(() => props.lyrics, async () => {
               <line x1="12" y1="8" x2="12" y2="8" stroke-width="2.5"/>
               <line x1="12" y1="11" x2="12" y2="17"/>
             </svg>
-            <span>信息</span>
+            <span>{{ t('info_btn') }}</span>
           </button>
-          <!-- 音量：图标 + 滑块（紧凑横向布局） -->
           <div class="m-vol-bar">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="m-vol-ico">
               <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
@@ -736,8 +651,7 @@ watch(() => props.lyrics, async () => {
               <line v-if="volume===0" x1="17" y1="9" x2="23" y2="15"/>
             </svg>
             <input type="range" min="0" max="1" step="0.01" :value="volume"
-                   class="volume-slider m-vol-slider-inline"
-                   @input="emit('volume-change',$event)"/>
+                   class="volume-slider m-vol-slider-inline" @input="emit('volume-change',$event)"/>
           </div>
           <SleepTimer variant="player" :sleep-minutes="sleepMinutes" :sleep-end-time="sleepEndTime"
                       @set-sleep-timer="emit('set-sleep-timer',$event)"
@@ -751,20 +665,18 @@ watch(() => props.lyrics, async () => {
               <circle cx="3" cy="12" r="1.5" fill="currentColor" stroke="none"/>
               <circle cx="3" cy="18" r="1.5" fill="currentColor" stroke="none"/>
             </svg>
-            <span>列表</span>
+            <span>{{ t('playlist') }}</span>
           </button>
         </div>
 
-        <!-- 歌词抽屉 -->
+        <!-- Lyrics sheet -->
         <Transition name="sheet-up">
           <div v-if="showLyrics" class="m-sheet-overlay" @click.self="showLyrics=false">
             <div class="m-sheet"
-                 @touchstart="onLyricTouchStart"
-                 @touchmove="onLyricTouchMove"
-                 @touchend="onLyricTouchEnd"
-                 @touchcancel="onLyricTouchEnd">
+                 @touchstart="onLyricTouchStart" @touchmove="onLyricTouchMove"
+                 @touchend="onLyricTouchEnd" @touchcancel="onLyricTouchEnd">
               <div class="m-sheet-head">
-                <span class="lyrics-label">LYRICS</span>
+                <span class="lyrics-label">{{ t('lyrics_label') }}</span>
                 <div class="lyrics-deco"></div>
                 <button class="m-sheet-x" @click="showLyrics=false">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -789,96 +701,77 @@ watch(() => props.lyrics, async () => {
                     <circle cx="18" cy="16" r="3"/>
                   </svg>
                 </div>
-                <p>暂无歌词</p>
+                <p>{{ t('no_lyrics') }}</p>
               </div>
-              <button class="m-sheet-close" @click="showLyrics=false">关闭歌词</button>
+              <button class="m-sheet-close" @click="showLyrics=false">{{ t('close_lyrics') }}</button>
             </div>
           </div>
         </Transition>
 
-        <!-- 标签信息面板（手机底部弹出） -->
+        <!-- Mobile metadata panel -->
         <MetadataPanel
             v-if="isMobile"
-            :show="showMeta"
-            :meta="audioMeta"
-            :filename="currentFilename"
-            :file-size="fileSize"
-            mode="sheet"
-            @close="showMeta=false"
-        />
+            :show="showMeta" :meta="audioMeta" :filename="currentFilename" :file-size="fileSize"
+            mode="sheet" @close="showMeta=false"/>
 
-      </div><!-- /mobile-player -->
+      </div>
 
-      <!-- 桌面播放列表：右侧侧栏 -->
+      <!-- Desktop playlist -->
       <PlaylistPanel
           v-if="!isMobile"
-          :show="showPlaylist"
-          :playlist="playlist" :current-index="currentIndex"
+          :show="showPlaylist" :playlist="playlist" :current-index="currentIndex"
           mode="side" :use-fixed="false"
           @close="showPlaylist=false"
           @load-index="emit('load-index',$event)"
-          @remove-from-playlist="emit('remove-from-playlist',$event)"
-      />
-      <!-- 手机播放列表：底部弹出 -->
+          @remove-from-playlist="emit('remove-from-playlist',$event)"/>
+      <!-- Mobile playlist -->
       <PlaylistPanel
           v-if="isMobile"
-          :show="showPlaylist"
-          :playlist="playlist" :current-index="currentIndex"
+          :show="showPlaylist" :playlist="playlist" :current-index="currentIndex"
           mode="sheet"
           @close="showPlaylist=false"
           @load-index="emit('load-index',$event)"
-          @remove-from-playlist="emit('remove-from-playlist',$event)"
-      />
+          @remove-from-playlist="emit('remove-from-playlist',$event)"/>
 
     </div>
   </div>
 </template>
 
 <style scoped>
-/* ── 跨浏览器重置 ── */
 button {
   -webkit-appearance: none;
-  -moz-appearance: none;
   appearance: none;
   outline: none;
-  font-family: inherit;
+  font-family: inherit
 }
 
 button:focus-visible {
   outline: 2px solid var(--t-accent1);
-  outline-offset: 2px;
+  outline-offset: 2px
 }
 
 input[type="range"] {
   -webkit-appearance: none;
-  -moz-appearance: none;
   appearance: none;
-  outline: none;
+  outline: none
 }
 
 input[type="range"]::-moz-range-track {
   height: 3px;
   border-radius: 999px;
   background: var(--t-border);
-  border: none;
+  border: none
 }
 
-/* ═══════════════ MODAL SHELL ═══════════════ */
 .player-modal {
   position: fixed;
   inset: 0;
   z-index: 100;
   display: flex;
   align-items: stretch;
-  background: rgba(0, 0, 0, .65);
-  -webkit-backdrop-filter: blur(4px);
-  backdrop-filter: blur(4px);
   width: 100%;
   height: 100%;
-  display: flex;
-  background: radial-gradient(ellipse at 20% 20%, color-mix(in srgb, var(--t-accent2) 8%, transparent) 0%, transparent 60%),
-  radial-gradient(ellipse at 80% 80%, color-mix(in srgb, var(--t-accent4) 8%, transparent) 0%, transparent 60%),
-  var(--t-bg-glass);
+  background: radial-gradient(ellipse at 20% 20%, color-mix(in srgb, var(--t-accent2) 8%, transparent) 0%, transparent 60%), radial-gradient(ellipse at 80% 80%, color-mix(in srgb, var(--t-accent4) 8%, transparent) 0%, transparent 60%), var(--t-bg-glass);
   overflow: hidden
 }
 
@@ -890,7 +783,7 @@ input[type="range"]::-moz-range-track {
   align-items: center;
   justify-content: center;
   background: rgba(0, 0, 0, 0.65);
-  backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px)
 }
 
 .cover-preview img {
@@ -898,25 +791,25 @@ input[type="range"]::-moz-range-track {
   max-height: min(80vh, 480px);
   border-radius: 16px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
-  border: 1px solid var(--t-border);
+  border: 1px solid var(--t-border)
 }
 
 .cover-preview-enter-active {
-  animation: coverFade 0.22s ease-out;
+  animation: coverFade 0.22s ease-out
 }
 
 .cover-preview-leave-active {
-  animation: coverFade 0.18s ease-in reverse;
+  animation: coverFade 0.18s ease-in reverse
 }
 
 @keyframes coverFade {
   from {
     opacity: 0;
-    transform: scale(0.96);
+    transform: scale(0.96)
   }
   to {
     opacity: 1;
-    transform: scale(1);
+    transform: scale(1)
   }
 }
 
@@ -950,7 +843,6 @@ input[type="range"]::-moz-range-track {
   transform: translateX(-50%) translateY(2px)
 }
 
-/* ═══════════════ 桌面左侧 ═══════════════ */
 .player-inner {
   width: 100%;
   height: 100%;
@@ -1003,7 +895,6 @@ input[type="range"]::-moz-range-track {
   letter-spacing: 2px
 }
 
-/* ALBUM */
 .album-wrap {
   position: relative;
   width: min(200px, 22vw);
@@ -1012,7 +903,7 @@ input[type="range"]::-moz-range-track {
 }
 
 .album-wrap.has-cover {
-  cursor: pointer;
+  cursor: pointer
 }
 
 .album-ring {
@@ -1048,12 +939,12 @@ input[type="range"]::-moz-range-track {
   border-radius: 50%;
   opacity: 0;
   transition: opacity .3s ease, transform .35s ease;
-  pointer-events: none;
+  pointer-events: none
 }
 
 .album-face.active {
   opacity: 1;
-  pointer-events: auto;
+  pointer-events: auto
 }
 
 .album-disc {
@@ -1068,7 +959,7 @@ input[type="range"]::-moz-range-track {
   background-position: center;
   border: 2px solid var(--t-disc-border);
   box-shadow: 0 0 40px rgba(0, 0, 0, .5);
-  overflow: hidden;
+  overflow: hidden
 }
 
 .cover-hole {
@@ -1080,7 +971,7 @@ input[type="range"]::-moz-range-track {
   height: 18%;
   border-radius: 50%;
   background: color-mix(in srgb, var(--t-disc-center) 65%, rgba(0, 0, 0, 0.65));
-  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.4);
+  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.4)
 }
 
 .disc-grooves {
@@ -1182,7 +1073,6 @@ input[type="range"]::-moz-range-track {
   }
 }
 
-/* PROGRESS */
 .progress-section {
   width: 100%
 }
@@ -1232,9 +1122,9 @@ input[type="range"]::-moz-range-track {
   height: 4px;
   border-radius: 999px;
   background: var(--t-progress);
-  opacity: 0.35;
+  opacity: .35;
   pointer-events: none;
-  transition: width .2s ease;
+  transition: width .2s ease
 }
 
 .progress-thumb {
@@ -1254,7 +1144,6 @@ input[type="range"]::-moz-range-track {
   transform: translate(-50%, -50%) scale(1.3)
 }
 
-/* CONTROLS */
 .controls {
   display: flex;
   align-items: center;
@@ -1364,7 +1253,6 @@ input[type="range"]::-moz-range-track {
   color: var(--t-accent3)
 }
 
-/* SECONDARY ROW */
 .secondary-row {
   display: flex;
   align-items: center;
@@ -1388,7 +1276,6 @@ input[type="range"]::-moz-range-track {
 
 .volume-slider {
   flex: 1;
-  -moz-appearance: none;
   -webkit-appearance: none;
   height: 3px;
   border-radius: 999px;
@@ -1398,7 +1285,6 @@ input[type="range"]::-moz-range-track {
 }
 
 .volume-slider::-webkit-slider-thumb {
-  -moz-appearance: none;
   -webkit-appearance: none;
   width: 13px;
   height: 13px;
@@ -1421,7 +1307,6 @@ input[type="range"]::-moz-range-track {
   flex-shrink: 0
 }
 
-/* DOTS */
 .playlist-dots {
   display: flex;
   gap: 5px;
@@ -1447,7 +1332,6 @@ input[type="range"]::-moz-range-track {
   background: var(--t-text2)
 }
 
-/* ═══════════════ 桌面歌词 ═══════════════ */
 .player-right {
   width: 50%;
   display: flex;
@@ -1562,7 +1446,6 @@ input[type="range"]::-moz-range-track {
   opacity: .6
 }
 
-/* ═══════════════ 响应式过渡 ═══════════════ */
 @media (max-width: 880px) {
   .player-left {
     width: 56%;
@@ -1581,7 +1464,6 @@ input[type="range"]::-moz-range-track {
   }
 }
 
-/* ═══════════════ 手机端 ≤600px ═══════════════ */
 .mobile-player {
   display: none
 }
@@ -1602,22 +1484,20 @@ input[type="range"]::-moz-range-track {
     height: 100%;
     padding: 0 22px calc(20px + env(safe-area-inset-bottom, 0px));
     box-sizing: border-box;
-    overflow: hidden;
+    overflow: hidden
   }
 
-  /* btn-close 位置补偿 */
   .btn-close {
     top: max(14px, env(safe-area-inset-top, 14px))
   }
 
-  /* 封面区：弹性占满剩余空间 */
   .m-cover-zone {
     flex: 1;
     min-height: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding-top: 60px; /* btn-close 高度占位 */
+    padding-top: 60px
   }
 
   .m-album {
@@ -1633,7 +1513,6 @@ input[type="range"]::-moz-range-track {
     inset: -4px
   }
 
-  /* 信息行 */
   .m-meta-row {
     display: flex;
     align-items: center;
@@ -1654,7 +1533,7 @@ input[type="range"]::-moz-range-track {
     overflow: hidden;
     text-overflow: ellipsis;
     -webkit-text-fill-color: transparent;
-    color: transparent; /* keep gradient */
+    color: transparent
   }
 
   .m-artist {
@@ -1690,7 +1569,6 @@ input[type="range"]::-moz-range-track {
     height: 16px
   }
 
-  /* 进度 */
   .m-prog {
     flex-shrink: 0;
     width: 100%;
@@ -1701,13 +1579,12 @@ input[type="range"]::-moz-range-track {
     font-size: .7rem
   }
 
-  /* 主控制行 */
   .m-controls-row {
     display: flex;
     align-items: center;
     justify-content: space-between;
     flex-shrink: 0;
-    padding: 8px 4px 4px;
+    padding: 8px 4px 4px
   }
 
   .m-prev, .m-next {
@@ -1745,14 +1622,13 @@ input[type="range"]::-moz-range-track {
     color: var(--t-accent1)
   }
 
-  /* 工具栏：歌词 | 音量 | 定时 | 列表 */
   .m-toolbar {
     display: flex;
     align-items: center;
     flex-shrink: 0;
     padding: 8px 0 6px;
     border-top: 1px solid var(--t-border);
-    gap: 0;
+    gap: 0
   }
 
   .m-tool {
@@ -1770,7 +1646,7 @@ input[type="range"]::-moz-range-track {
     padding: 6px 10px;
     border-radius: 8px;
     transition: all .2s;
-    flex-shrink: 0;
+    flex-shrink: 0
   }
 
   .m-tool svg {
@@ -1782,14 +1658,13 @@ input[type="range"]::-moz-range-track {
     color: var(--t-accent1)
   }
 
-  /* 音量滑块（工具栏内） */
   .m-vol-bar {
     flex: 1;
     min-width: 0;
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 0 6px;
+    padding: 0 6px
   }
 
   .m-vol-ico {
@@ -1802,24 +1677,22 @@ input[type="range"]::-moz-range-track {
   .m-vol-slider-inline {
     flex: 1;
     min-width: 0;
-    -moz-appearance: none;
     -webkit-appearance: none;
     height: 3px;
     border-radius: 999px;
     background: var(--t-border);
     outline: none;
-    cursor: pointer;
+    cursor: pointer
   }
 
   .m-vol-slider-inline::-webkit-slider-thumb {
-    -moz-appearance: none;
     -webkit-appearance: none;
     width: 14px;
     height: 14px;
     border-radius: 50%;
     background: var(--t-accent1);
     cursor: pointer;
-    box-shadow: 0 0 6px var(--t-disc-glow);
+    box-shadow: 0 0 6px var(--t-disc-glow)
   }
 
   .m-vol-slider-inline::-moz-range-thumb {
@@ -1828,10 +1701,9 @@ input[type="range"]::-moz-range-track {
     border-radius: 50%;
     background: var(--t-accent1);
     cursor: pointer;
-    box-shadow: 0 0 6px var(--t-disc-glow);
+    box-shadow: 0 0 6px var(--t-disc-glow)
   }
 
-  /* 歌词抽屉 */
   .m-sheet-overlay {
     position: fixed;
     inset: 0;
@@ -1851,7 +1723,7 @@ input[type="range"]::-moz-range-track {
     border-radius: 0;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    overflow: hidden
   }
 
   .m-sheet-head {
@@ -1888,7 +1760,7 @@ input[type="range"]::-moz-range-track {
     border-top: 1px solid var(--t-border);
     font-size: .95rem;
     letter-spacing: 1px;
-    cursor: pointer;
+    cursor: pointer
   }
 
   .m-lyr-scroll {

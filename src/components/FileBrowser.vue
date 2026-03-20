@@ -1,6 +1,9 @@
 <script setup>
-import {ref, computed, watch, onUnmounted} from 'vue'
+import {computed, onUnmounted, ref, watch} from 'vue'
 import SettingsPanel from './SettingsPanel.vue'
+import {useI18n} from '../utils/i18n.js'
+
+const {t} = useI18n()
 
 const props = defineProps({
   hasFolder: {type: Boolean, required: true},
@@ -26,7 +29,6 @@ const emit = defineEmits([
   'toggle-favorite', 'add-next',
 ])
 
-/* ── 本地 UI 状态 ─────────────────────────── */
 const searchQuery = ref('')
 const showThemePicker = ref(false)
 const showServerPanel = ref(false)
@@ -37,7 +39,6 @@ const themeWrapRef = ref(null)
 const showSettings = ref(false)
 const appVersion = __APP_VERSION__ || 'dev'
 
-/* 供父组件写入加载 / 错误状态 */
 const setServerLoading = (v) => {
   serverLoading.value = v
 }
@@ -50,7 +51,6 @@ const clearSearch = () => {
 }
 defineExpose({setServerLoading, setServerError, clearSearch})
 
-/* ── Enter 触发全局搜索 ────────────────────── */
 const handleSearchEnter = () => {
   const q = searchQuery.value.trim()
   if (!q) {
@@ -60,7 +60,6 @@ const handleSearchEnter = () => {
   emit('search-all', q)
 }
 
-/* ── 当前展示列表 ──────────────────────────── */
 const filteredEntries = computed(() => {
   if (props.isSearchMode && props.searchResults) return props.searchResults
   return props.currentEntries
@@ -69,8 +68,6 @@ const filteredEntries = computed(() => {
 const favoriteSet = computed(() => new Set(props.favoriteNames || []))
 const isFavorite = (entry) => favoriteSet.value.has(entry.name)
 
-
-/* ── 主题选择器点外部关闭 ─────────────────── */
 const onDocClick = (e) => {
   if (themeWrapRef.value && !themeWrapRef.value.contains(e.target))
     showThemePicker.value = false
@@ -80,33 +77,31 @@ watch(showThemePicker, (v) => {
       : document.removeEventListener('click', onDocClick, true)
 })
 
-/* ── 动作 ─────────────────────────────────── */
 const handleConnect = () => {
-  serverError.value = ''
+  serverError.value = '';
   emit('connect-server', {})
 }
 const handleFolderSelect = (e) => {
-  showServerPanel.value = false
+  showServerPanel.value = false;
   emit('folder-select', e)
 }
 const applyTheme = (id) => {
-  showThemePicker.value = false
+  showThemePicker.value = false;
   emit('apply-theme', id)
 }
 const toggleSettings = () => {
-  showThemePicker.value = false
+  showThemePicker.value = false;
   showSettings.value = !showSettings.value
 }
 const handleClearCache = () => {
-  showSettings.value = false
+  showSettings.value = false;
   emit('clear-cache')
 }
 const handleDisconnect = () => {
-  showServerPanel.value = false
+  showServerPanel.value = false;
   emit('disconnect')
 }
 
-/* ── 主题下拉：Teleport 定位 ─────────────────── */
 const themeDropdownStyle = ref({})
 const btnThemeRef = ref(null)
 const updateDropdownPos = () => {
@@ -122,7 +117,6 @@ const updateDropdownPos = () => {
 watch(showThemePicker, (v) => {
   if (v) updateDropdownPos()
 })
-
 onUnmounted(() => {
   document.removeEventListener('click', onDocClick, true)
 })
@@ -131,10 +125,11 @@ onUnmounted(() => {
 <template>
   <div class="browser-container" :class="{ 'has-minibar': hasMiniBar }">
 
-    <!-- ===== Header ===== -->
+    <!-- Header -->
     <header class="header" :class="{ 'has-source': hasFolder }">
       <div class="header-left">
-        <button v-if="hasFolder && sourceMode === 'server'" class="btn-server-back" @click="handleDisconnect" title="返回">
+        <button v-if="hasFolder && sourceMode === 'server'" class="btn-server-back"
+                @click="handleDisconnect" :title="t('back')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M15 19 8 12l7-7"/>
           </svg>
@@ -157,14 +152,15 @@ onUnmounted(() => {
             <circle cx="11" cy="11" r="8"/>
             <path d="m21 21-4.35-4.35"/>
           </svg>
-          <input v-model="searchQuery" class="search-input" type="text" placeholder="搜索歌曲，按 Enter"
+          <input v-model="searchQuery" class="search-input" type="text"
+                 :placeholder="t('search_placeholder')"
                  @keydown.enter="handleSearchEnter"/>
         </div>
 
         <div class="theme-wrap" ref="themeWrapRef">
           <button class="btn-theme" ref="btnThemeRef" @click="showThemePicker = !showThemePicker">
             <span class="theme-icon">{{ themes.find(t => t.id === currentThemeId)?.icon }}</span>
-            <span class="theme-label">主题</span>
+            <span class="theme-label">{{ t('theme') }}</span>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                  class="theme-chevron" :class="{ open: showThemePicker }">
               <path d="m6 9 6 6 6-6"/>
@@ -173,13 +169,13 @@ onUnmounted(() => {
           <Teleport to="body">
             <Transition name="dropdown">
               <div v-if="showThemePicker" class="theme-dropdown-teleport" :style="themeDropdownStyle">
-                <div class="dropdown-title">选择主题</div>
-                <div v-for="t in themes" :key="t.id"
-                     class="theme-opt-tp" :class="{ 'active-tp': t.id === currentThemeId }"
-                     @click="applyTheme(t.id)">
-                  <span>{{ t.icon }}</span>
-                  <span class="opt-name-tp">{{ t.name }}</span>
-                  <svg v-if="t.id === currentThemeId" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                <div class="dropdown-title">{{ t('select_theme') }}</div>
+                <div v-for="th in themes" :key="th.id"
+                     class="theme-opt-tp" :class="{ 'active-tp': th.id === currentThemeId }"
+                     @click="applyTheme(th.id)">
+                  <span>{{ th.icon }}</span>
+                  <span class="opt-name-tp">{{ th.name }}</span>
+                  <svg v-if="th.id === currentThemeId" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                        stroke-width="2.5" class="opt-check-tp">
                     <path d="M20 6 9 17l-5-5"/>
                   </svg>
@@ -195,11 +191,12 @@ onUnmounted(() => {
               <path
                   d="M12 15.5A3.5 3.5 0 1 0 12 8.5a3.5 3.5 0 0 0 0 7Zm7.4-3.5a7.4 7.4 0 0 0-.15-1.53l2.02-1.57a.6.6 0 0 0 .14-.76l-1.91-3.3a.6.6 0 0 0-.73-.26l-2.38.95a7.44 7.44 0 0 0-2.65-1.54l-.36-2.54a.6.6 0 0 0-.6-.51H9.82a.6.6 0 0 0-.6.51l-.36 2.54a7.44 7.44 0 0 0-2.65 1.54l-2.38-.95a.6.6 0 0 0-.73.26l-1.9 3.3a.6.6 0 0 0 .13.76l2.02 1.57A7.4 7.4 0 0 0 4.6 12a7.4 7.4 0 0 0 .15 1.53l-2.02 1.57a.6.6 0 0 0-.14.76l1.91 3.3a.6.6 0 0 0 .73.26l2.38-.95a7.44 7.44 0 0 0 2.65 1.54l.36 2.54a.6.6 0 0 0 .6.51h3.36a.6.6 0 0 0 .6-.51l.36-2.54a7.44 7.44 0 0 0 2.65-1.54l2.38.95a.6.6 0 0 0 .73-.26l1.9-3.3a.6.6 0 0 0-.13-.76l-2.02-1.57c.09-.5.15-1.02.15-1.53Z"/>
             </svg>
-            <span class="settings-label">设置</span>
+            <span class="settings-label">{{ t('settings') }}</span>
           </button>
         </div>
       </div>
     </header>
+
     <SettingsPanel
         :visible="showSettings"
         :app-version="appVersion"
@@ -208,22 +205,21 @@ onUnmounted(() => {
         @clear-cache="handleClearCache"
     />
 
-    <!-- ===== 欢迎页 ===== -->
+    <!-- Welcome screen -->
     <div v-if="!hasFolder" class="welcome-screen">
       <div class="welcome-inner">
         <div class="vinyl-disc">
           <div class="vinyl-groove" v-for="i in 5" :key="i"></div>
           <div class="vinyl-center"></div>
         </div>
-        <h1 class="welcome-title">开始你的音乐之旅</h1>
-        <p class="welcome-sub">选择本地文件，或聆听线上音乐</p>
-
+        <h1 class="welcome-title">{{ t('welcome_title') }}</h1>
+        <p class="welcome-sub">{{ t('welcome_sub') }}</p>
         <div class="welcome-btns">
           <button class="btn-select" @click="fileInputRef.click()">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
             </svg>
-            本地文件
+            {{ t('local_files') }}
           </button>
           <button class="btn-server" @click="handleConnect" :disabled="serverLoading">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -233,26 +229,23 @@ onUnmounted(() => {
             </svg>
             <span v-if="serverLoading" class="sp-loading"
                   style="width:14px;height:14px;border-radius:50%;border:2px solid rgba(255,255,255,0.3);border-top-color:#fff;animation:spin 0.7s linear infinite;display:inline-block"></span>
-            <span v-else>聆听音乐</span>
+            <span v-else>{{ t('listen_music') }}</span>
           </button>
         </div>
-
         <p v-if="serverError" class="sp-error" style="margin-top:12px">{{ serverError }}</p>
-
         <p v-if="errorMsg" class="error-msg">{{ errorMsg }}</p>
       </div>
     </div>
 
-    <!-- ===== 文件浏览器 ===== -->
+    <!-- File browser -->
     <div v-else class="file-browser">
       <nav class="breadcrumb">
         <span class="crumb crumb-root" @click="emit('go-root')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
             <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
           </svg>
-          根目录
+          {{ t('root_dir') }}
         </span>
-        <!-- 普通目录导航 -->
         <template v-if="!isSearchMode">
           <template v-for="(item, i) in pathStack" :key="i">
             <span class="crumb-sep">›</span>
@@ -260,21 +253,20 @@ onUnmounted(() => {
                   @click="emit('breadcrumb-nav', item)">{{ item.name }}</span>
           </template>
         </template>
-        <!-- 搜索模式面包屑 -->
         <template v-else>
           <span class="crumb-sep">›</span>
           <span class="crumb crumb-search crumb-active">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12">
               <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
             </svg>
-            搜索结果（{{ filteredEntries.length }} 首）
+            {{ t('search_results', {n: filteredEntries.length}) }}
           </span>
-          <button class="crumb-clear-btn" @click="emit('clear-search')" title="退出搜索">
+          <button class="crumb-clear-btn" @click="emit('clear-search')" :title="t('exit_search')">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12">
               <line x1="18" y1="6" x2="6" y2="18"/>
               <line x1="6" y1="6" x2="18" y2="18"/>
             </svg>
-            退出搜索
+            {{ t('exit_search') }}
           </button>
         </template>
       </nav>
@@ -284,29 +276,28 @@ onUnmounted(() => {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="m15 18-6-6 6-6"/>
           </svg>
-          返回
+          {{ t('back') }}
         </button>
         <button v-if="sourceMode === 'local'" class="btn-toolbar" @click="fileInputRef.click()">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
           </svg>
-          <span class="btn-text">更换文件夹</span>
+          <span class="btn-text">{{ t('change_folder') }}</span>
         </button>
         <button v-else class="btn-toolbar" @click="emit('refresh-server')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="23 4 23 10 17 10"/>
             <path d="M20.49 15a9 9 0 1 1-.18-5.3"/>
           </svg>
-          <span class="btn-text">刷新</span>
+          <span class="btn-text">{{ t('refresh') }}</span>
         </button>
-        <span class="item-count">{{ filteredEntries.length }} 个项目</span>
-        <!-- 我的收藏按钮（仅服务器模式显示） -->
+        <span class="item-count">{{ t('items', {n: filteredEntries.length}) }}</span>
         <button v-if="serverMode" class="btn-toolbar btn-fav-entry" @click="emit('show-favorites')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path
                 d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
           </svg>
-          <span class="btn-text">我的收藏</span>
+          <span class="btn-text">{{ t('my_favorites') }}</span>
         </button>
       </div>
 
@@ -332,17 +323,17 @@ onUnmounted(() => {
           <div class="card-name">{{ entry.name }}</div>
           <div v-if="entry.type !== 'folder'" class="card-ext">{{ entry.name.split('.').pop().toUpperCase() }}</div>
           <div v-if="entry.type !== 'folder'" class="card-actions" @click.stop>
-            <button class="action-btn" :class="{ active: isFavorite(entry) }" title="收藏"
+            <button class="action-btn" :class="{ active: isFavorite(entry) }" :title="t('favorite')"
                     @click.stop="emit('toggle-favorite', entry)">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
                 <path
                     d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
               </svg>
             </button>
-            <button class="action-btn" title="下一首播放" @click.stop="emit('add-next', entry)">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
-                <path d="m5 4 10 7-10 7V4Z"/>
-                <path d="M19 5v14"/>
+            <button class="action-btn action-btn--add" :title="t('add_next')" @click.stop="emit('add-next', entry)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="5" x2="12" y2="19"/>
+                <line x1="5" y1="12" x2="19" y2="12"/>
               </svg>
             </button>
           </div>
@@ -355,7 +346,7 @@ onUnmounted(() => {
           <line x1="9" y1="9" x2="9.01" y2="9"/>
           <line x1="15" y1="9" x2="15.01" y2="9"/>
         </svg>
-        <p>{{ isSearchMode ? '没有找到匹配的歌曲' : '此目录没有音频文件' }}</p>
+        <p>{{ isSearchMode ? t('no_search_results') : t('no_audio_files') }}</p>
       </div>
     </div>
 
@@ -366,14 +357,12 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-/* ── 跨浏览器重置：消除 Firefox/Safari 默认样式 ───────────────── */
 *, *::before, *::after {
   box-sizing: border-box;
 }
 
 button {
   -webkit-appearance: none;
-  -moz-appearance: none;
   appearance: none;
   outline: none;
   font-family: inherit;
@@ -386,19 +375,16 @@ button:focus-visible {
 
 input[type="text"], input[type="search"] {
   -webkit-appearance: none;
-  -moz-appearance: none;
   appearance: none;
   outline: none;
 }
 
 input[type="range"] {
   -webkit-appearance: none;
-  -moz-appearance: none;
   appearance: none;
   outline: none;
 }
 
-/* Firefox 对 input[type=range] 的轨道 */
 input[type="range"]::-moz-range-track {
   height: 3px;
   border-radius: 999px;
@@ -418,10 +404,8 @@ input[type="range"]::-moz-range-thumb {
   box-shadow: 0 0 6px var(--t-disc-glow);
 }
 
-/* Safari/Firefox 对 select 的默认边框 */
 select {
   -webkit-appearance: none;
-  -moz-appearance: none;
   appearance: none;
   outline: none;
 }
@@ -439,8 +423,6 @@ select {
   transition: bottom 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-
-/* Header */
 .header {
   position: relative;
   z-index: 100;
@@ -527,7 +509,6 @@ select {
   justify-content: flex-end;
 }
 
-/* 搜索框 */
 .search-wrap {
   position: relative;
   width: min(260px, 32vw);
@@ -566,8 +547,6 @@ select {
   box-shadow: 0 0 16px color-mix(in srgb, var(--t-accent1) 20%, transparent);
 }
 
-/* 数据源徽标 */
-/* 主题切换 */
 .theme-wrap {
   position: relative;
   display: flex;
@@ -614,21 +593,6 @@ select {
   transform: rotate(180deg);
 }
 
-.theme-dropdown {
-  position: absolute;
-  top: calc(100% + 8px);
-  right: 0;
-  min-width: 175px;
-  z-index: 2000;
-  background: color-mix(in srgb, var(--t-bg) 92%, white);
-  border: 1px solid var(--t-border);
-  border-radius: 14px;
-  padding: 8px;
-  box-shadow: 0 20px 60px var(--t-shadow, rgba(0, 0, 0, 0.5));
-  -webkit-backdrop-filter: blur(20px);
-  backdrop-filter: blur(20px);
-}
-
 .settings-wrap {
   position: relative;
 }
@@ -668,39 +632,6 @@ select {
   font-family: 'Orbitron', monospace;
 }
 
-.theme-opt {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 9px 12px;
-  border-radius: 8px;
-  cursor: pointer;
-  color: var(--t-text2);
-  font-size: 0.9rem;
-  transition: background 0.2s;
-}
-
-.theme-opt:hover {
-  background: var(--t-overlay);
-  color: var(--t-text);
-}
-
-.theme-opt.active {
-  background: color-mix(in srgb, var(--t-accent1) 12%, transparent);
-  color: var(--t-accent1);
-}
-
-.opt-name {
-  flex: 1;
-  font-weight: 500;
-}
-
-.opt-check {
-  width: 13px;
-  height: 13px;
-  color: var(--t-accent1);
-}
-
 .dropdown-enter-active {
   animation: dropDown 0.2s ease;
 }
@@ -720,7 +651,6 @@ select {
   }
 }
 
-/* 欢迎页 */
 .welcome-screen {
   flex: 1;
   display: flex;
@@ -749,8 +679,7 @@ select {
   align-items: center;
   justify-content: center;
   animation: vinylSpin 10s linear infinite;
-  box-shadow: 0 0 60px color-mix(in srgb, var(--t-accent1) 18%, transparent),
-  0 0 120px color-mix(in srgb, var(--t-accent2) 10%, transparent);
+  box-shadow: 0 0 60px color-mix(in srgb, var(--t-accent1) 18%, transparent), 0 0 120px color-mix(in srgb, var(--t-accent2) 10%, transparent);
 }
 
 @keyframes vinylSpin {
@@ -897,53 +826,6 @@ select {
   font-size: 0.85rem;
 }
 
-/* 服务器面板 */
-.server-panel {
-  margin-top: 20px;
-  padding: 20px 22px;
-  border-radius: 14px;
-  border: 1px solid var(--t-border);
-  background: var(--t-bg-card);
-  width: min(400px, 90vw);
-  text-align: left;
-}
-
-.sp-title {
-  font-size: 0.75rem;
-  letter-spacing: 3px;
-  color: var(--t-label-color);
-  margin-bottom: 10px;
-  font-family: 'Orbitron', monospace;
-}
-
-.sp-row {
-  display: flex;
-  gap: 8px;
-}
-
-.sp-btn {
-  padding: 9px 18px;
-  border-radius: 8px;
-  border: none;
-  background: var(--t-play-bg);
-  color: rgba(0, 0, 0, 0.8);
-  font-weight: 600;
-  font-family: inherit;
-  cursor: pointer;
-  font-size: 0.88rem;
-  transition: opacity 0.2s;
-  white-space: nowrap;
-  min-width: 64px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.sp-btn:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
 .sp-loading {
   width: 14px;
   height: 14px;
@@ -953,19 +835,18 @@ select {
   animation: spin 0.7s linear infinite;
 }
 
-@keyframes spin {
-  to {
-    transform: rotate(360deg)
-  }
-}
-
 .sp-error {
   color: #ff6b6b;
   font-size: 0.8rem;
   margin: 8px 0 0;
 }
 
-/* 文件浏览器 */
+@keyframes spin {
+  to {
+    transform: rotate(360deg)
+  }
+}
+
 .file-browser {
   flex: 1;
   display: flex;
@@ -1098,7 +979,6 @@ select {
   letter-spacing: 0.5px;
 }
 
-/* ── 文件列表 ─────────────────────────────── */
 .file-list {
   flex: 1;
   overflow-y: auto;
@@ -1201,22 +1081,22 @@ select {
 .card-actions {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 2px;
   margin-left: 6px;
 }
 
 .action-btn {
   width: 30px;
   height: 30px;
-  border-radius: 8px;
-  border: 1px solid color-mix(in srgb, var(--t-border) 65%, transparent);
-  background: color-mix(in srgb, var(--t-bg-card) 85%, transparent);
-  color: var(--t-text2);
+  border-radius: 7px;
+  border: none;
+  background: transparent;
+  color: var(--t-text3);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.18s ease;
+  transition: color 0.18s, background 0.18s, transform 0.15s;
 }
 
 .action-btn svg {
@@ -1225,16 +1105,19 @@ select {
 }
 
 .action-btn:hover {
-  border-color: color-mix(in srgb, var(--t-accent1) 50%, transparent);
   color: var(--t-accent1);
-  background: color-mix(in srgb, var(--t-accent1) 12%, transparent);
-  transform: translateY(-1px);
+  background: color-mix(in srgb, var(--t-accent1) 10%, transparent);
+  transform: scale(1.12);
 }
 
 .action-btn.active {
-  color: var(--t-accent1);
-  border-color: color-mix(in srgb, var(--t-accent1) 65%, transparent);
-  background: color-mix(in srgb, var(--t-accent1) 16%, transparent);
+  color: var(--t-accent3);
+  background: color-mix(in srgb, var(--t-accent3) 10%, transparent);
+}
+
+.action-btn--add:hover {
+  color: var(--t-accent2);
+  background: color-mix(in srgb, var(--t-accent2) 10%, transparent);
 }
 
 .playing-waves {
@@ -1253,11 +1136,11 @@ select {
 }
 
 .playing-waves span:nth-child(2) {
-  animation-delay: 0.15s;
+  animation-delay: 0.15s
 }
 
 .playing-waves span:nth-child(3) {
-  animation-delay: 0.3s;
+  animation-delay: 0.3s
 }
 
 @keyframes waveAnim {
@@ -1285,7 +1168,6 @@ select {
   opacity: 0.5;
 }
 
-/* 响应式 */
 @media (max-width: 880px) {
   .search-wrap {
     width: min(200px, 26vw);
@@ -1341,6 +1223,8 @@ select {
   .file-row {
     padding: 10px 11px;
     gap: 10px;
+    border: 1px solid color-mix(in srgb, var(--t-border) 70%, transparent);
+    border-radius: 12px;
   }
 
   .card-icon {
@@ -1391,7 +1275,6 @@ select {
 }
 </style>
 
-<!-- 主题下拉全局样式（Teleport 到 body，scoped 不适用） -->
 <style>
 .theme-dropdown-teleport {
   min-width: 175px;

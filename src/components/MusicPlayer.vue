@@ -2,16 +2,19 @@
 import {computed, nextTick, onMounted, onUnmounted, ref, watch} from 'vue'
 import {findCurrentLyricIndex, parseLRC} from '../utils/lrcParser.js'
 import {parsePlainLyrics} from '../utils/m4aMetadata.js'
+import {useI18n} from '../utils/i18n.js'
 import FileBrowser from './FileBrowser.vue'
 import PlayerView from './PlayerView.vue'
 import MiniBar from './MiniBar.vue'
+
+const {t} = useI18n()
 
 // =============================================
 // 主题
 // =============================================
 const THEMES = [
   {
-    id: 'daylight', name: '白日晴空', icon: '☀️', vars: {
+    id: 'daylight', name: '白日晴空', nameEn: 'Daylight', icon: '☀️', vars: {
       '--t-bg': '#f5f7fa',
       '--t-bg-image': 'url("/bg/daylight.svg")',
       '--t-bg-card': 'rgba(255,255,255,0.85)',
@@ -49,7 +52,7 @@ const THEMES = [
     }
   },
   {
-    id: 'cyber', name: '赛博霓虹', icon: '⚡', vars: {
+    id: 'cyber', name: '赛博霓虹', nameEn: 'Cyber Neon', icon: '⚡', vars: {
       '--t-bg': '#050810',
       '--t-bg-image': 'url("/bg/cyber.svg")',
       '--t-bg-card': 'rgba(255,255,255,0.04)',
@@ -86,7 +89,7 @@ const THEMES = [
     }
   },
   {
-    id: 'sakura', name: '樱花物语', icon: '🌸', vars: {
+    id: 'sakura', name: '樱花物语', nameEn: 'Sakura', icon: '🌸', vars: {
       '--t-bg': '#0f0810',
       '--t-bg-image': 'none',
       '--t-bg-card': 'rgba(255,220,240,0.04)',
@@ -123,7 +126,7 @@ const THEMES = [
     }
   },
   {
-    id: 'forest', name: '翡翠森林', icon: '🌿', vars: {
+    id: 'forest', name: '翡翠森林', nameEn: 'Forest', icon: '🌿', vars: {
       '--t-bg': '#060e08',
       '--t-bg-image': 'url("/bg/forest.svg")',
       '--t-bg-glass': 'rgba(6,18,8,0.9)',
@@ -159,7 +162,7 @@ const THEMES = [
     }
   },
   {
-    id: 'aurora', name: '极光幻境', icon: '🌌', vars: {
+    id: 'aurora', name: '极光幻境', nameEn: 'Aurora', icon: '🌌', vars: {
       '--t-bg': '#04080f',
       '--t-bg-image': 'url("/bg/Aurora.png")',
       '--t-bg-card': 'rgba(120,200,255,0.04)',
@@ -196,7 +199,7 @@ const THEMES = [
     }
   },
   {
-    id: 'ember', name: '烈焰余烬', icon: '🔥', vars: {
+    id: 'ember', name: '烈焰余烬', nameEn: 'Ember', icon: '🔥', vars: {
       '--t-bg': '#0c0500',
       '--t-bg-image': 'url("/bg/ember.svg")',
       '--t-bg-card': 'rgba(255,120,30,0.04)',
@@ -275,16 +278,13 @@ function bgNoise(x, y) {
       _lerp(u, _grad(_perm[a + 1], x, y - 1), _grad(_perm[b + 1], x - 1, y - 1)))
 }
 
-// ── Fire (单根外焰，缓慢跳动) ─────────────────
+// ── Fire ─────────────────────────────────────
 let singleFlame = null
 const initFire = () => {
-  // 单根火苗，居中，参数固定
   singleFlame = {
-    x: 0, // 运行时按 bgW/2 计算
-    baseW: 0, // 运行时按 bgW 比例计算
-    // 三层正弦叠加，频率极慢，模拟真实外焰呼吸
+    x: 0, baseW: 0,
     ph1: 0, ph2: 1.2, ph3: 2.5,
-    ph4: 0.7, ph5: 3.1,          // 额外高频微抖
+    ph4: 0.7, ph5: 3.1,
     flickPh: 0,
   }
 }
@@ -296,35 +296,27 @@ const drawFire = () => {
 
   const fl = singleFlame
   const cx = bgW / 2
-  const bw = bgW * 0.22   // 底部半宽
+  const bw = bgW * 0.22
   const baseY = bgH
 
-  // 极慢相位推进 —— 产生缓慢呼吸感
-  fl.ph1 += 0.008
-  fl.ph2 += 0.013
+  fl.ph1 += 0.008;
+  fl.ph2 += 0.013;
   fl.ph3 += 0.006
-  fl.ph4 += 0.022
-  fl.ph5 += 0.031
+  fl.ph4 += 0.022;
+  fl.ph5 += 0.031;
   fl.flickPh += 0.018
 
-  // 高度：主呼吸 + 次波动，变化范围约 ±18%
   const breathe = Math.sin(fl.ph1) * 0.12 + Math.sin(fl.ph2) * 0.06 + Math.sin(fl.ph3) * 0.04
   const flicker = Math.sin(fl.ph4) * 0.025 + Math.sin(fl.ph5) * 0.015
   const h = bgH * (0.55 + breathe + flicker)
-
-  // 火尖横向漂移：极慢，幅度小
   const sway = Math.sin(fl.ph1 * 0.8) * bgW * 0.018 + Math.sin(fl.ph2 * 1.1) * bgW * 0.010
 
-  const tipX = cx + sway
-  const tipY = baseY - h
-
-  // 贝塞尔控制点 —— 外焰轮廓：底宽、腰收、尖细
+  const tipX = cx + sway, tipY = baseY - h
   const cp1x = cx - bw * 0.82 + sway * 0.15, cp1y = baseY - h * 0.32
   const cp2x = tipX - bw * 0.12, cp2y = tipY + h * 0.20
   const cp3x = tipX + bw * 0.12, cp3y = tipY + h * 0.20
   const cp4x = cx + bw * 0.82 + sway * 0.15, cp4y = baseY - h * 0.32
 
-  // 外焰渐变：底透明 → 深红 → 橙 → 黄白尖
   const brightnessBoost = 0.85 + Math.sin(fl.flickPh) * 0.15
   const gr = c.createLinearGradient(cx, baseY, tipX, tipY)
   gr.addColorStop(0, 'rgba(0,0,0,0)')
@@ -342,17 +334,15 @@ const drawFire = () => {
   c.moveTo(cx - bw, baseY)
   c.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, tipX, tipY)
   c.bezierCurveTo(cp3x, cp3y, cp4x, cp4y, cx + bw, baseY)
-  c.closePath()
+  c.closePath();
   c.fill()
 
-  // 底部辉光晕
   const baseGlow = c.createRadialGradient(cx, baseY, 0, cx, baseY, bw * 1.6)
   baseGlow.addColorStop(0, `rgba(255,70,0,${0.22 * brightnessBoost})`)
   baseGlow.addColorStop(0.5, `rgba(200,30,0,${0.10 * brightnessBoost})`)
   baseGlow.addColorStop(1, 'rgba(0,0,0,0)')
   c.fillStyle = baseGlow;
   c.fillRect(cx - bw * 2, baseY - bw * 1.6, bw * 4, bw * 1.6)
-
   c.restore()
 }
 
@@ -418,7 +408,6 @@ const drawAurora = () => {
   c.restore()
 }
 
-
 // ── Sakura ────────────────────────────────────
 let bgPetals = []
 const mkPetal = (init) => ({
@@ -452,16 +441,6 @@ const drawSakuraPetal = (c, p) => {
   c.moveTo(0, -s);
   c.lineTo(0, -s * 0.65);
   c.stroke()
-  c.strokeStyle = `hsla(${p.hue - 10},${p.sat - 15}%,${p.lum - 22}%,${a * 0.2})`;
-  c.lineWidth = 0.4
-  c.beginPath();
-  c.moveTo(0, s * 0.35);
-  c.lineTo(s * 0.45, -s * 0.25);
-  c.stroke()
-  c.beginPath();
-  c.moveTo(0, s * 0.35);
-  c.lineTo(-s * 0.45, -s * 0.25);
-  c.stroke()
   c.restore()
 }
 const initSakura = () => {
@@ -473,12 +452,12 @@ const drawSakura = () => {
   c.fillStyle = '#130818';
   c.fillRect(0, 0, bgW, bgH)
   const glow = c.createRadialGradient(bgW * 0.5, bgH * 0.4, 0, bgW * 0.5, bgH * 0.4, bgW * 0.55)
-  glow.addColorStop(0, 'rgba(200,100,160,0.08)')
+  glow.addColorStop(0, 'rgba(200,100,160,0.08)');
   glow.addColorStop(1, 'rgba(0,0,0,0)')
   c.fillStyle = glow;
   c.fillRect(0, 0, bgW, bgH)
-  const t = bgFrame * 0.008
-  const wStr = 0.8 + Math.sin(t * 0.6) * 0.25 + Math.sin(t * 1.5) * 0.1
+  const tt = bgFrame * 0.008
+  const wStr = 0.8 + Math.sin(tt * 0.6) * 0.25 + Math.sin(tt * 1.5) * 0.1
   for (let i = bgPetals.length - 1; i >= 0; i--) {
     const p = bgPetals[i]
     p.swPh += p.swFr;
@@ -543,7 +522,6 @@ const sourceMode = ref('local')
 const serverTree = ref(null)
 const fileBrowserRef = ref(null)
 
-// ── 全局搜索状态 ──────────────────────────────
 const isSearchMode = ref(false)
 const searchResults = ref(null)
 
@@ -608,13 +586,13 @@ const currentSong = computed(() =>
         ? playlist.value[currentIndex.value] : null
 )
 const songTitle = computed(() =>
-    currentSong.value ? currentSong.value.name.replace(/\.[^.]+$/, '') : '未知歌曲'
+    currentSong.value ? currentSong.value.name.replace(/\.[^.]+$/, '') : t('unknown_song')
 )
 const artistName = computed(() => {
   if (currentSong.value?.metaArtist) return currentSong.value.metaArtist
   if (audioMeta.value?.artist) return audioMeta.value.artist
   const i = songTitle.value.indexOf(' - ')
-  return i > 0 ? songTitle.value.substring(0, i) : '未知艺术家'
+  return i > 0 ? songTitle.value.substring(0, i) : t('unknown_artist')
 })
 const displayTitle = computed(() => {
   if (currentSong.value?.metaTitle) return currentSong.value.metaTitle
@@ -660,12 +638,8 @@ const buildVirtualFS = (files) => {
     const fn = parts[parts.length - 1]
     if (isAudioFile(fn) || isLrcFile(fn))
       cur.children.set(fn, {
-        name: fn,
-        type: 'file',
-        fileObj: file,
-        path: parts,
-        isAudio: isAudioFile(fn),
-        isLrc: isLrcFile(fn)
+        name: fn, type: 'file', fileObj: file, path: parts,
+        isAudio: isAudioFile(fn), isLrc: isLrcFile(fn)
       })
   })
   allEntries.value = root
@@ -674,8 +648,7 @@ const buildVirtualFS = (files) => {
 const navigateToPath = (pathParts) => {
   let node = allEntries.value
   for (const p of pathParts) {
-    if (node.children?.has(p)) node = node.children.get(p)
-    else break
+    if (node.children?.has(p)) node = node.children.get(p); else break
   }
   if (!node?.children) {
     currentEntries.value = [];
@@ -721,7 +694,7 @@ const connectServer = async ({url} = {}) => {
     const res = await fetch(`${base}/api/files?flat=0`)
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const data = await res.json()
-    if (!data.success) throw new Error(data.error || '服务器返回失败')
+    if (!data.success) throw new Error(data.error || t('get_favorites_failed'))
     serverBase.value = base;
     serverTree.value = convertServerTree(data.tree, [])
     allEntries.value = serverTree.value;
@@ -730,7 +703,7 @@ const connectServer = async ({url} = {}) => {
     pathStack.value = [];
     navigateToServerPath([])
   } catch (e) {
-    fileBrowserRef.value?.setServerError(`连接失败：${e.message}`)
+    fileBrowserRef.value?.setServerError(t('connect_failed_prefix') + e.message)
   } finally {
     fileBrowserRef.value?.setServerLoading(false)
   }
@@ -740,10 +713,7 @@ const convertServerTree = (node, parentPath) => {
   const currentPath = [...parentPath, node.name]
   if (node.type === 'folder')
     return {
-      type: 'folder',
-      name: node.name,
-      path: currentPath,
-      source: 'server',
+      type: 'folder', name: node.name, path: currentPath, source: 'server',
       children: (node.children || []).map(c => convertServerTree(c, currentPath))
     }
   return {
@@ -760,7 +730,7 @@ const navigateToServerPath = (pathParts) => {
   let node = serverTree.value
   for (const part of pathParts) {
     const child = node?.children?.find(c => c.name === part)
-    if (!child) break
+    if (!child) break;
     node = child
   }
   if (!node) {
@@ -769,7 +739,7 @@ const navigateToServerPath = (pathParts) => {
   }
   const items = (node.children || []).filter(e => e.type === 'folder' ? hasAudioInServerFolder(e) : e.isAudio)
   items.sort((a, b) => {
-    if (a.type !== b.type) return a.type === 'folder' ? -1 : 1;
+    if (a.type !== b.type) return a.type === 'folder' ? -1 : 1
     return a.name.localeCompare(b.name)
   })
   currentEntries.value = items
@@ -872,10 +842,10 @@ const playAudio = async (entry, visibleList) => {
 const addSongToNext = async (song) => {
   if (!song) return
   if (!playlist.value.length) {
-    playlist.value = [song]
-    currentIndex.value = 0
+    playlist.value = [song];
+    currentIndex.value = 0;
     showPlayer.value = true
-    await loadAndPlay(0)
+    await loadAndPlay(0);
     return
   }
   const insertIndex = Math.min(currentIndex.value + 1, playlist.value.length)
@@ -900,7 +870,7 @@ const showCacheToast = (msg, dur = 1600) => {
 }
 
 const openCacheDialog = (msg) => {
-  cacheDialogMsg.value = msg
+  cacheDialogMsg.value = msg;
   showCacheDialog.value = true
 }
 const closeCacheDialog = () => showCacheDialog.value = false
@@ -914,16 +884,16 @@ const clearCachedSongs = async () => {
       await Promise.all(keys.map(req => cache.delete(req)))
       cleared = keys.length
     }
-    memoryBlobCache.clear()
+    memoryBlobCache.clear();
     memoryCacheOrder.length = 0
     localStorage.removeItem(CACHE_KEYS_LS)
-    const msg = cleared ? `清理成功（${cleared} 项）` : '清理成功'
-    showCacheToast(msg)
+    const msg = cleared ? t('cache_cleared_n', {n: cleared}) : t('cache_cleared')
+    showCacheToast(msg);
     openCacheDialog(msg)
   } catch (e) {
-    console.error('清除缓存失败:', e);
-    const msg = '清理缓存失败'
-    showCacheToast(msg)
+    console.error('清除缓存失败:', e)
+    const msg = t('cache_clear_failed')
+    showCacheToast(msg);
     openCacheDialog(msg)
   }
 }
@@ -958,23 +928,23 @@ const touchCacheKey = (url) => {
 
 const touchMemoryKey = (url) => {
   const idx = memoryCacheOrder.indexOf(url)
-  if (idx !== -1) memoryCacheOrder.splice(idx, 1)
+  if (idx !== -1) memoryCacheOrder.splice(idx, 1);
   memoryCacheOrder.push(url)
 }
 
 const rememberBlob = (url, blob) => {
-  memoryBlobCache.set(url, blob)
+  memoryBlobCache.set(url, blob);
   touchMemoryKey(url)
   while (memoryCacheOrder.length > MEMORY_CACHE_MAX) {
-    const oldKey = memoryCacheOrder.shift()
+    const oldKey = memoryCacheOrder.shift();
     memoryBlobCache.delete(oldKey)
   }
 }
 
 const getMemoryBlobUrl = (url) => {
   const blob = memoryBlobCache.get(url)
-  if (!blob) return null
-  touchMemoryKey(url)
+  if (!blob) return null;
+  touchMemoryKey(url);
   return URL.createObjectURL(blob)
 }
 
@@ -1007,23 +977,22 @@ const resolveAudioSrc = async (song) => {
         }).catch(() => {
         })
         touchCacheKey(url);
-        rememberBlob(url, blob)
+        rememberBlob(url, blob);
         return URL.createObjectURL(blob)
       }
       cacheAudioInBackground(cache, url);
       return url
     }
-    // Cache API 不可用时的内存兜底
     const resp = await fetch(url)
     if (!resp.ok) return url
-    const blob = await resp.blob()
-    rememberBlob(url, blob)
+    const blob = await resp.blob();
+    rememberBlob(url, blob);
     return URL.createObjectURL(blob)
   } catch {
     if (MUST_PRELOAD_EXTS.has(ext)) {
       try {
         const blob = await fetch(url).then(r => r.blob());
-        rememberBlob(url, blob)
+        rememberBlob(url, blob);
         return URL.createObjectURL(blob)
       } catch {
         return url
@@ -1089,7 +1058,7 @@ const loadAndPlay = async (index) => {
     return
   }
   if (audio.src?.startsWith('blob:')) URL.revokeObjectURL(audio.src)
-  audio.src = src
+  audio.src = src;
   audio.volume = volume.value
   try {
     _playPromise = audio.play();
@@ -1132,7 +1101,7 @@ const loadLyrics = async (song) => {
   if (song.source === 'server') {
     if (song.lrc) {
       try {
-        const text = await fetch(buildServerUrl(song.lrc)).then(r => r.text());
+        const text = await fetch(buildServerUrl(song.lrc)).then(r => r.text())
         if (applyLyricsText(text)) return
       } catch (e) {
         console.warn('LRC fetch 失败:', e)
@@ -1169,7 +1138,7 @@ const loadLyrics = async (song) => {
         if (metaResp.ok) {
           const data = await metaResp.json()
           if (data.success) {
-            audioMeta.value = data.meta
+            audioMeta.value = data.meta;
             audioFileSize.value = data.size || 0
             if (data.meta?.lyrics) applyLyricsText(data.meta.lyrics)
           }
@@ -1201,7 +1170,7 @@ const togglePlay = async () => {
     try {
       _playPromise = audio.play();
       await _playPromise;
-      _playPromise = null;
+      _playPromise = null
       isPlaying.value = true;
       startAlbumRotation()
     } catch (e) {
@@ -1211,7 +1180,7 @@ const togglePlay = async () => {
   }
 }
 const prevSong = () => {
-  if (!playlist.value.length) return;
+  if (!playlist.value.length) return
   loadAndPlay((currentIndex.value - 1 + playlist.value.length) % playlist.value.length)
 }
 const nextSong = (fromEnd = false) => {
@@ -1247,13 +1216,10 @@ const toggleFavorite = async (targetSong = currentSong.value) => {
   if (targetSong.source === 'server') {
     try {
       if (!wasFav) await fetch(buildServerUrl('/api/favorite/add'), {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(targetSong)
+        method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(targetSong)
       })
       else await fetch(buildServerUrl('/api/favorite/remove'), {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
+        method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({url: targetSong.url, name: targetSong.name})
       })
     } catch (e) {
@@ -1269,20 +1235,20 @@ const favError = ref('')
 
 const loadFavorites = async () => {
   if (sourceMode.value !== 'server') {
-    favError.value = '请先连接服务器';
+    favError.value = t('server_required_fav');
     return
   }
   favLoading.value = true;
   favError.value = ''
   try {
-    const res = await fetch(buildServerUrl('/api/favorite/data'));
+    const res = await fetch(buildServerUrl('/api/favorite/data'))
     const data = await res.json()
     if (data.success) {
       favoritesList.value = data.data;
       favorites.value = new Set(data.data.map(s => s.name))
-    } else favError.value = data.error || '获取收藏失败'
+    } else favError.value = data.error || t('get_favorites_failed')
   } catch (e) {
-    favError.value = `请求失败: ${e.message}`
+    favError.value = t('request_failed_prefix') + e.message
   } finally {
     favLoading.value = false
   }
@@ -1297,7 +1263,6 @@ const toggleFavPanel = () => {
   }
 }
 
-// 收藏面板下滑关闭（移动端）
 let favSheetGesture = null
 const onFavTouchStart = (e) => {
   if (e.touches.length !== 1) return
@@ -1307,12 +1272,9 @@ const onFavTouchStart = (e) => {
 const onFavTouchMove = (e) => {
   if (!favSheetGesture) return
   const {clientX: x, clientY: y} = e.touches[0]
-  const dy = y - favSheetGesture.y
-  const dx = x - favSheetGesture.x
+  const dy = y - favSheetGesture.y, dx = x - favSheetGesture.x
   favSheetGesture.lastY = y
-  if (!favSheetGesture.active && dy > 25 && dy > Math.abs(dx) * 1.2) {
-    favSheetGesture.active = true
-  }
+  if (!favSheetGesture.active && dy > 25 && dy > Math.abs(dx) * 1.2) favSheetGesture.active = true
   if (favSheetGesture.active) e.preventDefault()
 }
 const onFavTouchEnd = () => {
@@ -1365,7 +1327,7 @@ const onAudioEnded = () => {
   if (sleepMinutes.value === -1) {
     audioRef.value?.pause();
     isPlaying.value = false;
-    stopAlbumRotation();
+    stopAlbumRotation()
     sleepMinutes.value = 0;
     sleepEndTime.value = 0;
     return
@@ -1380,7 +1342,7 @@ const onCanPlayThrough = () => {
   bufferPercent.value = 100
 }
 const onTimeUpdate = () => {
-  if (!isDragging.value) currentTime.value = audioRef.value?.currentTime || 0;
+  if (!isDragging.value) currentTime.value = audioRef.value?.currentTime || 0
   updateLyric();
   updateBufferedPercent()
 }
@@ -1445,8 +1407,8 @@ const getProgressEl = () => {
 }
 const onSeek = (event) => {
   const el = getProgressEl();
-  if (!el) return;
-  const ratio = getProgressRatio(event, el);
+  if (!el) return
+  const ratio = getProgressRatio(event, el)
   audioRef.value.currentTime = ratio * duration.value;
   currentTime.value = ratio * duration.value
 }
@@ -1546,16 +1508,16 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  stopAlbumRotation()
+  stopAlbumRotation();
   stopBgCanvas()
   if (sleepTimerId) clearTimeout(sleepTimerId)
   if (cacheToastTimer) clearTimeout(cacheToastTimer)
   if (_bgResizeTimer) clearTimeout(_bgResizeTimer)
   document.removeEventListener('keydown', onKeyDown)
   window.removeEventListener('resize', onBgResize)
-  document.removeEventListener('mousemove', onDragMove)
+  document.removeEventListener('mousemove', onDragMove);
   document.removeEventListener('mouseup', stopDrag)
-  document.removeEventListener('touchmove', onDragMove)
+  document.removeEventListener('touchmove', onDragMove);
   document.removeEventListener('touchend', stopDrag)
 })
 </script>
@@ -1569,12 +1531,7 @@ onUnmounted(() => {
        }">
 
     <!-- 动态 Canvas 背景（四大自然主题） -->
-    <canvas
-        v-if="CANVAS_THEMES.has(currentThemeId)"
-        ref="bgCanvasRef"
-        class="bg-canvas"
-        aria-hidden="true"
-    />
+    <canvas v-if="CANVAS_THEMES.has(currentThemeId)" ref="bgCanvasRef" class="bg-canvas" aria-hidden="true"/>
 
     <!-- 静态背景装饰（daylight/cyber 主题保留） -->
     <div class="bg-orb orb1"></div>
@@ -1585,9 +1542,9 @@ onUnmounted(() => {
     <Transition name="cache-modal">
       <div v-if="showCacheDialog" class="cache-modal-mask" @click="closeCacheDialog">
         <div class="cache-modal" @click.stop>
-          <div class="cache-modal-title">清理缓存</div>
+          <div class="cache-modal-title">{{ t('cache_clear_title') }}</div>
           <div class="cache-modal-msg">{{ cacheDialogMsg }}</div>
-          <button class="cache-modal-btn" @click="closeCacheDialog">我知道了</button>
+          <button class="cache-modal-btn" @click="closeCacheDialog">{{ t('ok') }}</button>
         </div>
       </div>
     </Transition>
@@ -1635,8 +1592,8 @@ onUnmounted(() => {
            @touchend="onFavTouchEnd"
            @touchcancel="onFavTouchEnd">
         <div class="fav-header">
-          <span class="fav-title">我的收藏</span>
-          <span class="fav-count" v-if="!favLoading">{{ favoritesList.length }} 首</span>
+          <span class="fav-title">{{ t('my_favorites') }}</span>
+          <span class="fav-count" v-if="!favLoading">{{ t('songs_count', {n: favoritesList.length}) }}</span>
           <button class="fav-close" @click="showFavorites = false">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="18" y1="6" x2="6" y2="18"/>
@@ -1644,18 +1601,20 @@ onUnmounted(() => {
             </svg>
           </button>
         </div>
-        <div v-if="favLoading" class="fav-loading"><span class="fav-spinner"></span><span>加载中...</span></div>
+        <div v-if="favLoading" class="fav-loading"><span class="fav-spinner"></span><span>{{ t('loading') }}</span>
+        </div>
         <div v-else-if="favError" class="fav-error">{{ favError }}</div>
         <div v-else-if="favoritesList.length === 0" class="fav-empty">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
             <path
                 d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
           </svg>
-          <p>暂无收藏</p><span>在播放页面点击心形图标收藏歌曲</span>
+          <p>{{ t('no_favorites') }}</p>
+          <span>{{ t('favorites_hint') }}</span>
         </div>
         <div v-else class="fav-list">
-          <div v-for="(song, i) in favoritesList" :key="song.url || song.name" class="fav-item"
-               @click="playFromFavorites(song)">
+          <div v-for="(song, i) in favoritesList" :key="song.url || song.name"
+               class="fav-item" @click="playFromFavorites(song)">
             <div class="fav-icon">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                 <path d="M9 18V5l12-2v13"/>

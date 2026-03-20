@@ -16,17 +16,20 @@
  *   load-index(i)
  *   remove-from-playlist(i)
  */
+import {useI18n} from '../utils/i18n.js'
+
+const {t} = useI18n()
+
 const props = defineProps({
   show: {type: Boolean, required: true},
   playlist: {type: Array, required: true},
   currentIndex: {type: Number, required: true},
-  mode: {type: String, default: 'side'},   // 'side' | 'sheet'
+  mode: {type: String, default: 'side'},
   offsetBottom: {type: String, default: '0px'},
   useFixed: {type: Boolean, default: false},
 })
 const emit = defineEmits(['close', 'load-index', 'remove-from-playlist'])
 
-// 下滑关闭（仅 sheet 模式）
 let sheetGesture = null
 const onSheetTouchStart = (e) => {
   if (props.mode !== 'sheet' || e.touches.length !== 1) return
@@ -39,9 +42,7 @@ const onSheetTouchMove = (e) => {
   const dy = y - sheetGesture.y
   const dx = x - sheetGesture.x
   sheetGesture.lastY = y
-  if (!sheetGesture.active && dy > 25 && dy > Math.abs(dx) * 1.2) {
-    sheetGesture.active = true
-  }
+  if (!sheetGesture.active && dy > 25 && dy > Math.abs(dx) * 1.2) sheetGesture.active = true
   if (sheetGesture.active) e.preventDefault()
 }
 const onSheetTouchEnd = () => {
@@ -54,7 +55,7 @@ const onSheetTouchEnd = () => {
 </script>
 
 <template>
-  <!-- ══ SHEET 模式：手机底部弹出 ══ -->
+  <!-- ══ SHEET 模式 ══ -->
   <Teleport to="body" v-if="mode === 'sheet'">
     <Transition name="sheet-up">
       <div v-if="show" class="pl-sheet-overlay" @click.self="emit('close')">
@@ -65,8 +66,8 @@ const onSheetTouchEnd = () => {
              @touchcancel="onSheetTouchEnd">
           <div class="pl-sheet-handle"></div>
           <div class="pl-panel-header">
-            <span class="pl-panel-title">播放列表</span>
-            <span class="pl-panel-count">{{ playlist.length }} 首</span>
+            <span class="pl-panel-title">{{ t('playlist') }}</span>
+            <span class="pl-panel-count">{{ t('songs_count', {n: playlist.length}) }}</span>
             <button class="pl-panel-close" @click="emit('close')">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <line x1="18" y1="6" x2="6" y2="18"/>
@@ -75,7 +76,7 @@ const onSheetTouchEnd = () => {
             </button>
           </div>
           <div class="pl-panel-scroll">
-            <div v-if="playlist.length === 0" class="pl-panel-empty">播放列表为空</div>
+            <div v-if="playlist.length === 0" class="pl-panel-empty">{{ t('playlist_empty') }}</div>
             <div v-for="(song, i) in playlist" :key="song.name + i"
                  class="pl-panel-item" :class="{ 'pl-panel-cur': i === currentIndex }"
                  @click="emit('load-index', i); emit('close')">
@@ -94,16 +95,16 @@ const onSheetTouchEnd = () => {
     </Transition>
   </Teleport>
 
-  <!-- ══ SIDE 模式：PC右侧滑入 ══ -->
+  <!-- ══ SIDE 模式 ══ -->
   <Teleport to="body" v-else>
     <Transition name="pl-panel-slide">
       <div v-if="show"
            class="pl-side-panel"
-           :style="useFixed ? { position:'fixed', top:0, right:0, bottom: offsetBottom } : {}"
+           :style="useFixed ? { position: 'fixed', top: 0, right: 0, bottom: offsetBottom } : {}"
            :class="{ 'pl-side-absolute': !useFixed, 'pl-side-fixed': useFixed }">
         <div class="pl-panel-header">
-          <span class="pl-panel-title">播放列表</span>
-          <span class="pl-panel-count">{{ playlist.length }} 首</span>
+          <span class="pl-panel-title">{{ t('playlist') }}</span>
+          <span class="pl-panel-count">{{ t('songs_count', {n: playlist.length}) }}</span>
           <button class="pl-panel-close" @click="emit('close')">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="18" y1="6" x2="6" y2="18"/>
@@ -112,7 +113,7 @@ const onSheetTouchEnd = () => {
           </button>
         </div>
         <div class="pl-panel-scroll">
-          <div v-if="playlist.length === 0" class="pl-panel-empty">播放列表为空</div>
+          <div v-if="playlist.length === 0" class="pl-panel-empty">{{ t('playlist_empty') }}</div>
           <div v-for="(song, i) in playlist" :key="song.name + i"
                class="pl-panel-item" :class="{ 'pl-panel-cur': i === currentIndex }"
                @click="emit('load-index', i); emit('close')">
@@ -132,7 +133,6 @@ const onSheetTouchEnd = () => {
 </template>
 
 <style scoped>
-/* ── 共用列表样式 ───────────────────────────── */
 .pl-panel-header {
   display: flex;
   align-items: center;
@@ -263,7 +263,7 @@ const onSheetTouchEnd = () => {
   font-size: 0.85rem;
 }
 
-/* ── SHEET 模式（手机底部）───────────────────── */
+/* Sheet */
 .pl-sheet-overlay {
   position: fixed;
   inset: 0;
@@ -315,7 +315,7 @@ const onSheetTouchEnd = () => {
   }
 }
 
-/* ── SIDE 模式（PC右侧）────────────────────── */
+/* Side */
 .pl-side-panel {
   z-index: 200;
   background: color-mix(in srgb, var(--t-bg) 94%, white);
@@ -329,7 +329,6 @@ const onSheetTouchEnd = () => {
 }
 
 .pl-side-absolute {
-  /* absolute 模式由 PlayerView 自身 position:relative 容器决定位置 */
   position: absolute;
   top: 0;
   right: 0;
@@ -340,7 +339,6 @@ const onSheetTouchEnd = () => {
   position: fixed;
   top: 0;
   right: 0;
-  /* bottom 由 inline style 控制 */
 }
 
 .pl-panel-slide-enter-active {

@@ -1,5 +1,8 @@
 <script setup>
-import {ref, watch, onMounted, onUnmounted, computed} from 'vue'
+import {computed, onMounted, onUnmounted, ref, watch} from 'vue'
+import {useI18n} from '../utils/i18n.js'
+
+const {t} = useI18n()
 
 const props = defineProps({
   sleepMinutes: {type: Number, default: 0},
@@ -41,7 +44,7 @@ const close = () => {
   customInput.value = ''
 }
 
-// 倒计时
+// Countdown
 const sleepCountdown = ref('')
 let countdownTimer = null
 const updateCountdown = () => {
@@ -50,7 +53,8 @@ const updateCountdown = () => {
     return
   }
   const diff = Math.max(0, props.sleepEndTime - Date.now())
-  const m = Math.floor(diff / 60000), s = Math.floor((diff % 60000) / 1000)
+  const m = Math.floor(diff / 60000)
+  const s = Math.floor((diff % 60000) / 1000)
   sleepCountdown.value = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 }
 watch(() => props.sleepEndTime, (v) => {
@@ -66,26 +70,26 @@ const presetOptions = [15, 30, 45, 60, 90]
 const isActive = computed(() => props.sleepMinutes !== 0)
 
 const select = (min) => {
-  customInput.value = '';
-  emit('set-sleep-timer', min);
+  customInput.value = ''
+  emit('set-sleep-timer', min)
   close()
 }
 const confirmCustom = () => {
   const v = parseInt(customInput.value)
   if (!v || v < 1 || v > 999) return
-  emit('set-sleep-timer', v);
+  emit('set-sleep-timer', v)
   close()
 }
 const cancel = () => {
-  emit('cancel-sleep-timer');
+  emit('cancel-sleep-timer')
   close()
 }
 
-const btnTitle = computed(() =>
-    isActive.value
-        ? (props.sleepMinutes === -1 ? '定时停止：本曲结束后' : `定时停止：${sleepCountdown.value}`)
-        : '定时停止'
-)
+const btnTitle = computed(() => {
+  if (!isActive.value) return t('sleep_timer')
+  if (props.sleepMinutes === -1) return t('sleep_active_end')
+  return t('sleep_active_prefix') + sleepCountdown.value
+})
 </script>
 
 <template>
@@ -99,43 +103,43 @@ const btnTitle = computed(() =>
       <span v-if="isActive && sleepCountdown" class="st-badge">{{ sleepCountdown }}</span>
     </button>
 
-    <!-- 桌面浮窗 -->
+    <!-- Desktop panel -->
     <Transition name="st-pop">
       <div v-if="showPanel && !isMobile" class="st-panel">
         <div class="st-panel-header">
-          <span class="st-panel-title">定时停止播放</span>
-          <button v-if="isActive" class="st-cancel-link" @click="cancel">取消</button>
+          <span class="st-panel-title">{{ t('sleep_timer_panel') }}</span>
+          <button v-if="isActive" class="st-cancel-link" @click="cancel">{{ t('cancel') }}</button>
         </div>
         <div v-if="isActive" class="st-active-row">
-          <div class="st-countdown">{{ sleepMinutes === -1 ? '本曲结束' : sleepCountdown }}</div>
-          <div class="st-hint">将在此时间后停止播放</div>
+          <div class="st-countdown">{{ sleepMinutes === -1 ? t('end_of_song') : sleepCountdown }}</div>
+          <div class="st-hint">{{ t('stop_after') }}</div>
         </div>
         <div class="st-options">
           <button v-for="min in presetOptions" :key="min"
                   class="st-opt" :class="{ 'st-opt--active': sleepMinutes === min }"
-                  @click="select(min)">{{ min }} 分钟
+                  @click="select(min)">{{ min }} {{ t('minutes_unit') }}
           </button>
           <button class="st-opt st-opt--end" :class="{ 'st-opt--active': sleepMinutes === -1 }"
-                  @click="select(-1)">本曲结束后
+                  @click="select(-1)">{{ t('after_current_song') }}
           </button>
         </div>
         <div class="st-custom-row">
           <input class="st-custom-input" type="number" min="1" max="999"
-                 placeholder="自定义分钟" v-model="customInput"
+                 :placeholder="t('custom_minutes')" v-model="customInput"
                  @keydown.enter="confirmCustom" @click.stop/>
-          <button class="st-custom-confirm" @click.stop="confirmCustom">确定</button>
+          <button class="st-custom-confirm" @click.stop="confirmCustom">{{ t('confirm') }}</button>
         </div>
       </div>
     </Transition>
   </div>
 
-  <!-- 手机 Sheet -->
+  <!-- Mobile sheet -->
   <Teleport to="body">
     <Transition name="st-sheet-anim">
       <div v-if="showPanel && isMobile" class="st-overlay" @click.self="close">
         <div class="st-sheet">
           <div class="st-sheet-header">
-            <span class="st-panel-title">定时停止播放</span>
+            <span class="st-panel-title">{{ t('sleep_timer_panel') }}</span>
             <button class="st-close-btn" @click="close">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <line x1="18" y1="6" x2="6" y2="18"/>
@@ -144,24 +148,27 @@ const btnTitle = computed(() =>
             </button>
           </div>
           <div v-if="isActive" class="st-sheet-active">
-            <div class="st-sheet-cd">{{ sleepMinutes === -1 ? '本曲结束后' : sleepCountdown }}</div>
-            <div class="st-sheet-hint">将在此时间后停止播放</div>
-            <button class="st-sheet-cancel" @click="cancel">取消定时</button>
+            <div class="st-sheet-cd">{{ sleepMinutes === -1 ? t('after_current_song') : sleepCountdown }}</div>
+            <div class="st-sheet-hint">{{ t('stop_after') }}</div>
+            <button class="st-sheet-cancel" @click="cancel">{{ t('cancel_timer') }}</button>
           </div>
           <div class="st-sheet-opts">
             <button v-for="min in presetOptions" :key="min"
                     class="st-opt" :class="{ 'st-opt--active': sleepMinutes === min }"
-                    @click="select(min)">{{ min }} 分钟
+                    @click="select(min)">{{ min }} {{ t('minutes_unit') }}
             </button>
             <button class="st-opt st-opt--end" :class="{ 'st-opt--active': sleepMinutes === -1 }"
-                    @click="select(-1)">本曲结束后
+                    @click="select(-1)">{{ t('after_current_song') }}
             </button>
           </div>
           <div class="st-sheet-custom-row">
             <input class="st-custom-input st-custom-input--sheet" type="number" min="1" max="999"
-                   placeholder="自定义分钟数 (1-999)" v-model="customInput"
+                   :placeholder="t('custom_minutes_hint')" v-model="customInput"
                    @keydown.enter="confirmCustom" @click.stop/>
-            <button class="st-custom-confirm st-custom-confirm--sheet" @click.stop="confirmCustom">确定</button>
+            <button class="st-custom-confirm st-custom-confirm--sheet" @click.stop="confirmCustom">{{
+                t('confirm')
+              }}
+            </button>
           </div>
         </div>
       </div>
@@ -229,7 +236,7 @@ const btnTitle = computed(() =>
   white-space: nowrap;
 }
 
-/* 桌面浮窗 */
+/* Desktop panel */
 .st-panel {
   position: absolute;
   bottom: calc(100% + 12px);
@@ -330,7 +337,6 @@ const btnTitle = computed(() =>
   grid-column: 1 / -1;
 }
 
-/* 自定义行（桌面） */
 .st-custom-row {
   display: flex;
   gap: 6px;
@@ -355,7 +361,6 @@ const btnTitle = computed(() =>
 
 .st-custom-input::-webkit-inner-spin-button,
 .st-custom-input::-webkit-outer-spin-button {
-  -moz-appearance: none;
   -webkit-appearance: none;
 }
 
@@ -404,7 +409,7 @@ const btnTitle = computed(() =>
   }
 }
 
-/* 手机 Sheet */
+/* Mobile sheet */
 .st-overlay {
   position: fixed;
   inset: 0;
@@ -511,7 +516,6 @@ const btnTitle = computed(() =>
   font-size: 0.85rem;
 }
 
-/* 自定义行（Sheet） */
 .st-sheet-custom-row {
   display: flex;
   gap: 8px;

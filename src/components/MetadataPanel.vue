@@ -1,10 +1,15 @@
 <script setup>
+import {computed} from 'vue'
+import {useI18n} from '../utils/i18n.js'
+
+const {t} = useI18n()
+
 const props = defineProps({
-  meta: {type: Object, default: null},   // AudioMeta 对象
+  meta: {type: Object, default: null},
   filename: {type: String, default: ''},
   fileSize: {type: Number, default: 0},
   show: {type: Boolean, default: false},
-  mode: {type: String, default: 'side'}, // 'side' | 'sheet'
+  mode: {type: String, default: 'side'},
 })
 const emit = defineEmits(['close'])
 
@@ -32,49 +37,48 @@ const fmtTrack = (num, total) => {
   return total ? `${num} / ${total}` : num
 }
 
-// 分组字段定义（对标 Kid3 的字段顺序）
-const groups = [
+const groups = computed(() => [
   {
-    label: '基本信息',
+    label: t('basic_info'),
     icon: '♩',
     rows: [
-      {key: 'title', label: 'Title（标题）'},
-      {key: 'artist', label: 'Artist（艺术家）'},
-      {key: 'albumArtist', label: 'Album Artist（专辑艺术家）'},
-      {key: 'album', label: 'Album（专辑）'},
-      {key: 'year', label: 'Year（年份）'},
-      {key: 'genre', label: 'Genre（流派）'},
-      {key: 'composer', label: 'Composer（作曲）'},
-      {key: 'comment', label: 'Comment（备注）'},
+      {key: 'title', label: t('field_title')},
+      {key: 'artist', label: t('field_artist')},
+      {key: 'albumArtist', label: t('field_album_artist')},
+      {key: 'album', label: t('field_album')},
+      {key: 'year', label: t('field_year')},
+      {key: 'genre', label: t('field_genre')},
+      {key: 'composer', label: t('field_composer')},
+      {key: 'comment', label: t('field_comment')},
     ],
   },
   {
-    label: '曲目信息',
+    label: t('track_info'),
     icon: '⊞',
     rows: [
-      {key: '_track', label: 'Track（曲目）'},
-      {key: '_disc', label: 'Disc（碟号）'},
-      {key: 'bpm', label: 'BPM（节拍）'},
-      {key: 'isrc', label: 'ISRC'},
-      {key: 'copyright', label: 'Copyright（版权）'},
-      {key: 'url', label: 'URL（链接）'},
+      {key: '_track', label: t('field_track')},
+      {key: '_disc', label: t('field_disc')},
+      {key: 'bpm', label: t('field_bpm')},
+      {key: 'isrc', label: t('field_isrc')},
+      {key: 'copyright', label: t('field_copyright')},
+      {key: 'url', label: t('field_url')},
     ],
   },
   {
-    label: '技术参数',
+    label: t('technical'),
     icon: '⚙',
     rows: [
-      {key: '_format', label: 'Format（格式）'},
-      {key: '_duration', label: 'Duration（时长）'},
-      {key: '_bitrate', label: 'Bitrate（码率）'},
-      {key: '_sample', label: 'Sample Rate（采样率）'},
-      {key: '_channels', label: 'Channels（声道）'},
-      {key: '_filesize', label: 'File Size（文件大小）'},
-      {key: '_filename', label: 'File Name（文件名）'},
-      {key: 'encoder', label: 'Encoder（编码器）'},
+      {key: '_format', label: t('field_format')},
+      {key: '_duration', label: t('field_duration')},
+      {key: '_bitrate', label: t('field_bitrate')},
+      {key: '_sample', label: t('field_sample')},
+      {key: '_channels', label: t('field_channels')},
+      {key: '_filesize', label: t('field_filesize')},
+      {key: '_filename', label: t('field_filename')},
+      {key: 'encoder', label: t('field_encoder')},
     ],
   },
-]
+])
 
 const getCellValue = (key) => {
   const m = props.meta
@@ -93,7 +97,7 @@ const getCellValue = (key) => {
     case '_sample':
       return m.sampleRate ? `${m.sampleRate.toLocaleString()} Hz` : '—'
     case '_channels':
-      return m.channels === 1 ? '单声道' : m.channels === 2 ? '立体声' : fmt(m.channels)
+      return m.channels === 1 ? t('mono') : m.channels === 2 ? t('stereo') : fmt(m.channels)
     case '_filesize':
       return fmtSize(props.fileSize)
     case '_filename':
@@ -111,11 +115,11 @@ const extraEntries = () => {
 </script>
 
 <template>
-  <!-- ── 侧栏模式（PC 右侧） ─────────────────────── -->
+  <!-- ── Side panel (PC) ─────────────────────── -->
   <Transition name="meta-side" v-if="mode === 'side'">
     <div v-if="show" class="meta-side-panel">
       <div class="meta-header">
-        <span class="meta-label">TAG INFO</span>
+        <span class="meta-label">{{ t('tag_info') }}</span>
         <div class="meta-deco"></div>
         <button class="meta-close-btn" @click="emit('close')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -124,9 +128,7 @@ const extraEntries = () => {
           </svg>
         </button>
       </div>
-
       <div class="meta-scroll">
-        <!-- 封面 -->
         <div v-if="meta?.cover" class="meta-cover-wrap">
           <img :src="meta.cover" class="meta-cover" alt="cover"/>
           <div class="meta-cover-mime">{{ meta.coverMime || 'image' }}</div>
@@ -137,10 +139,8 @@ const extraEntries = () => {
             <path d="M9 18V5l12-2v13"/>
             <circle cx="6" cy="18" r="2"/>
           </svg>
-          <span>无封面</span>
+          <span>{{ t('no_cover') }}</span>
         </div>
-
-        <!-- 字段分组 -->
         <template v-for="grp in groups" :key="grp.label">
           <div class="meta-group-title">
             <span class="meta-grp-icon">{{ grp.icon }}</span>{{ grp.label }}
@@ -153,10 +153,8 @@ const extraEntries = () => {
             </div>
           </div>
         </template>
-
-        <!-- 自定义字段 -->
         <template v-if="extraEntries().length > 0">
-          <div class="meta-group-title"><span class="meta-grp-icon">＋</span>自定义字段</div>
+          <div class="meta-group-title"><span class="meta-grp-icon">＋</span>{{ t('custom_fields') }}</div>
           <div class="meta-table">
             <div v-for="[k,v] in extraEntries()" :key="k" class="meta-row">
               <span class="meta-row-key">{{ k }}</span>
@@ -164,26 +162,25 @@ const extraEntries = () => {
             </div>
           </div>
         </template>
-
         <div v-if="!meta" class="meta-empty">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
             <circle cx="12" cy="12" r="10"/>
             <path d="M12 8v4m0 4h.01"/>
           </svg>
-          <p>暂无标签信息</p>
-          <span>播放音频后自动读取</span>
+          <p>{{ t('no_tag_info') }}</p>
+          <span>{{ t('play_to_load') }}</span>
         </div>
       </div>
     </div>
   </Transition>
 
-  <!-- ── Sheet 模式（手机底部弹出） ─────────────── -->
+  <!-- ── Sheet (mobile) ─────────────────────── -->
   <Transition name="sheet-up" v-else>
     <div v-if="show" class="meta-sheet-overlay" @click.self="emit('close')">
       <div class="meta-sheet">
         <div class="meta-sheet-handle"></div>
         <div class="meta-header">
-          <span class="meta-label">TAG INFO</span>
+          <span class="meta-label">{{ t('tag_info') }}</span>
           <div class="meta-deco"></div>
           <button class="meta-close-btn" @click="emit('close')">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -192,9 +189,7 @@ const extraEntries = () => {
             </svg>
           </button>
         </div>
-
         <div class="meta-scroll">
-          <!-- 封面 + 基本信息横排 -->
           <div class="meta-sheet-top">
             <div v-if="meta?.cover" class="meta-cover-wrap small">
               <img :src="meta.cover" class="meta-cover" alt="cover"/>
@@ -211,8 +206,6 @@ const extraEntries = () => {
               </div>
             </div>
           </div>
-
-          <!-- 字段表 -->
           <template v-for="grp in groups" :key="grp.label">
             <div class="meta-group-title">
               <span class="meta-grp-icon">{{ grp.icon }}</span>{{ grp.label }}
@@ -225,9 +218,8 @@ const extraEntries = () => {
               </div>
             </div>
           </template>
-
           <template v-if="extraEntries().length > 0">
-            <div class="meta-group-title"><span class="meta-grp-icon">＋</span>自定义字段</div>
+            <div class="meta-group-title"><span class="meta-grp-icon">＋</span>{{ t('custom_fields') }}</div>
             <div class="meta-table">
               <div v-for="[k,v] in extraEntries()" :key="k" class="meta-row">
                 <span class="meta-row-key">{{ k }}</span>
@@ -242,10 +234,8 @@ const extraEntries = () => {
 </template>
 
 <style scoped>
-/* ── 跨浏览器重置 ── */
 button {
   -webkit-appearance: none;
-  -moz-appearance: none;
   appearance: none;
   outline: none;
   font-family: inherit;
@@ -256,7 +246,6 @@ button:focus-visible {
   outline-offset: 2px;
 }
 
-/* ══ Side Panel ═════════════════════════════════════════════════════ */
 .meta-side-panel {
   position: absolute;
   top: 0;
@@ -293,7 +282,6 @@ button:focus-visible {
   }
 }
 
-/* ══ Sheet ══════════════════════════════════════════════════════════ */
 .meta-sheet-overlay {
   position: fixed;
   inset: 0;
@@ -346,7 +334,6 @@ button:focus-visible {
   }
 }
 
-/* ══ Header ═════════════════════════════════════════════════════════ */
 .meta-header {
   display: flex;
   align-items: center;
@@ -394,7 +381,6 @@ button:focus-visible {
   color: var(--t-text);
 }
 
-/* ══ Scroll ═════════════════════════════════════════════════════════ */
 .meta-scroll {
   flex: 1;
   overflow-y: auto;
@@ -412,7 +398,6 @@ button:focus-visible {
   border-radius: 2px;
 }
 
-/* ══ Cover ══════════════════════════════════════════════════════════ */
 .meta-cover-wrap {
   margin: 4px 16px 12px;
   border-radius: 12px;
@@ -471,7 +456,6 @@ button:focus-visible {
   opacity: 0.5;
 }
 
-/* ══ Sheet Top ══════════════════════════════════════════════════════ */
 .meta-sheet-top {
   display: flex;
   gap: 14px;
@@ -526,7 +510,6 @@ button:focus-visible {
   letter-spacing: 0.5px;
 }
 
-/* ══ Groups & Table ═════════════════════════════════════════════════ */
 .meta-group-title {
   display: flex;
   align-items: center;
@@ -591,7 +574,6 @@ button:focus-visible {
   font-weight: 400;
 }
 
-/* ══ Empty ══════════════════════════════════════════════════════════ */
 .meta-empty {
   display: flex;
   flex-direction: column;

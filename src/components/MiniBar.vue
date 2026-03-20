@@ -1,7 +1,10 @@
 <script setup>
 import {onMounted, onUnmounted, ref} from 'vue'
+import {useI18n} from '../utils/i18n.js'
 import SleepTimer from './SleepTimer.vue'
 import PlaylistPanel from './PlaylistPanel.vue'
+
+const {t} = useI18n()
 
 const props = defineProps({
   displayTitle: {type: String, required: true},
@@ -60,7 +63,8 @@ onUnmounted(() => window.removeEventListener('resize', checkMobile))
 
       <!-- 中：控制 -->
       <div class="minibar-center">
-        <button class="mb-btn mb-fav" :class="{ active: isFavorite }" @click="emit('toggle-fav')">
+        <button class="mb-btn mb-fav" :class="{ active: isFavorite }" @click="emit('toggle-fav')"
+                :title="t('favorite')">
           <svg viewBox="0 0 24 24" :fill="isFavorite?'currentColor':'none'" stroke="currentColor" stroke-width="2">
             <path
                 d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
@@ -125,6 +129,7 @@ onUnmounted(() => window.removeEventListener('resize', checkMobile))
                     @set-sleep-timer="emit('set-sleep-timer', $event)"
                     @cancel-sleep-timer="emit('cancel-sleep-timer')"/>
         <button class="mb-btn mb-list" :class="{ active: showPlaylist }"
+                :title="t('playlist')"
                 @click.stop="showPlaylist = !showPlaylist">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="8" y1="6" x2="21" y2="6"/>
@@ -168,7 +173,6 @@ onUnmounted(() => window.removeEventListener('resize', checkMobile))
 </template>
 
 <style scoped>
-/* ── 跨浏览器重置 ── */
 button {
   -webkit-appearance: none;
   -moz-appearance: none;
@@ -196,7 +200,6 @@ input[type="range"]::-moz-range-track {
   border: none;
 }
 
-/* ══ MiniBar ══════════════════════════════════════════════ */
 .minibar {
   position: fixed;
   bottom: 0;
@@ -210,7 +213,6 @@ input[type="range"]::-moz-range-track {
   backdrop-filter: blur(32px) saturate(1.6);
 }
 
-/* 进度条 */
 .minibar-progress {
   height: 3px;
   background: color-mix(in srgb, var(--t-border) 60%, transparent);
@@ -236,7 +238,6 @@ input[type="range"]::-moz-range-track {
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
-/* 左：封面碟 + 信息 */
 .minibar-left {
   display: flex;
   align-items: center;
@@ -305,7 +306,6 @@ input[type="range"]::-moz-range-track {
   letter-spacing: 0.5px;
 }
 
-/* 中：控制 */
 .minibar-center {
   flex: 1;
   display: flex;
@@ -394,7 +394,6 @@ input[type="range"]::-moz-range-track {
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
 }
 
-/* 右：音量 + 定时 + 列表 */
 .minibar-right {
   display: flex;
   align-items: center;
@@ -454,7 +453,6 @@ input[type="range"]::-moz-range-track {
   transform: scale(1.25);
 }
 
-/* 响应式 */
 @media (max-width: 640px) {
   .minibar-inner {
     padding: 0 16px;
