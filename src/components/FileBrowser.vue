@@ -1,62 +1,52 @@
 <script setup>
-import {computed, onUnmounted, ref, watch} from 'vue'
+import { ref, computed, watch, onUnmounted } from 'vue'
 import SettingsPanel from './SettingsPanel.vue'
-import {useI18n} from '../utils/i18n.js'
+import { useI18n } from '../utils/i18n.js'
 
-const {t} = useI18n()
+const { t } = useI18n()
 
 const props = defineProps({
-  hasFolder: {type: Boolean, required: true},
-  sourceMode: {type: String, required: true},
-  pathStack: {type: Array, required: true},
-  currentEntries: {type: Array, required: true},
-  currentSong: {type: Object, default: null},
-  isPlaying: {type: Boolean, required: true},
-  errorMsg: {type: String, default: ''},
-  themes: {type: Array, required: true},
-  currentThemeId: {type: String, required: true},
-  serverMode: {type: Boolean, default: false},
-  searchResults: {type: Array, default: null},
-  isSearchMode: {type: Boolean, default: false},
-  hasMiniBar: {type: Boolean, default: false},
-  favoriteNames: {type: Array, default: () => []},
+  hasFolder:      { type: Boolean, required: true },
+  sourceMode:     { type: String,  required: true },
+  pathStack:      { type: Array,   required: true },
+  currentEntries: { type: Array,   required: true },
+  currentSong:    { type: Object,  default: null },
+  isPlaying:      { type: Boolean, required: true },
+  errorMsg:       { type: String,  default: '' },
+  themes:         { type: Array,   required: true },
+  currentThemeId: { type: String,  required: true },
+  serverMode:     { type: Boolean, default: false },
+  searchResults:  { type: Array,   default: null },
+  isSearchMode:   { type: Boolean, default: false },
+  hasMiniBar:     { type: Boolean, default: false },
+  favoriteNames:  { type: Array,   default: () => [] },
 })
 
 const emit = defineEmits([
-  'play-audio', 'enter-folder', 'go-back', 'go-root', 'breadcrumb-nav',
-  'folder-select', 'connect-server', 'disconnect', 'refresh-server', 'apply-theme',
-  'show-favorites', 'search-all', 'clear-search', 'clear-cache',
-  'toggle-favorite', 'add-next',
+  'play-audio','enter-folder','go-back','go-root','breadcrumb-nav',
+  'folder-select','connect-server','disconnect','refresh-server','apply-theme',
+  'show-favorites','search-all','clear-search','clear-cache',
+  'toggle-favorite','add-next','download-song',
 ])
 
-const searchQuery = ref('')
+const searchQuery    = ref('')
 const showThemePicker = ref(false)
 const showServerPanel = ref(false)
-const serverLoading = ref(false)
-const serverError = ref('')
-const fileInputRef = ref(null)
-const themeWrapRef = ref(null)
-const showSettings = ref(false)
-const appVersion = __APP_VERSION__ || 'dev'
+const serverLoading  = ref(false)
+const serverError    = ref('')
+const fileInputRef   = ref(null)
+const themeWrapRef   = ref(null)
+const showSettings   = ref(false)
+const appVersion     = __APP_VERSION__ || 'dev'
 
-const setServerLoading = (v) => {
-  serverLoading.value = v
-}
-const setServerError = (v) => {
-  serverError.value = v
-}
-const clearSearch = () => {
-  searchQuery.value = '';
-  emit('clear-search')
-}
-defineExpose({setServerLoading, setServerError, clearSearch})
+const setServerLoading = (v) => { serverLoading.value = v }
+const setServerError   = (v) => { serverError.value = v }
+const clearSearch      = () => { searchQuery.value = ''; emit('clear-search') }
+defineExpose({ setServerLoading, setServerError, clearSearch })
 
 const handleSearchEnter = () => {
   const q = searchQuery.value.trim()
-  if (!q) {
-    emit('clear-search');
-    return
-  }
+  if (!q) { emit('clear-search'); return }
   emit('search-all', q)
 }
 
@@ -66,7 +56,7 @@ const filteredEntries = computed(() => {
 })
 
 const favoriteSet = computed(() => new Set(props.favoriteNames || []))
-const isFavorite = (entry) => favoriteSet.value.has(entry.name)
+const isFavorite  = (entry) => favoriteSet.value.has(entry.name)
 
 const onDocClick = (e) => {
   if (themeWrapRef.value && !themeWrapRef.value.contains(e.target))
@@ -77,34 +67,16 @@ watch(showThemePicker, (v) => {
       : document.removeEventListener('click', onDocClick, true)
 })
 
-const handleConnect = () => {
-  serverError.value = '';
-  emit('connect-server', {})
-}
-const handleFolderSelect = (e) => {
-  showServerPanel.value = false;
-  emit('folder-select', e)
-}
-const applyTheme = (id) => {
-  showThemePicker.value = false;
-  emit('apply-theme', id)
-}
-const toggleSettings = () => {
-  showThemePicker.value = false;
-  showSettings.value = !showSettings.value
-}
-const handleClearCache = () => {
-  showSettings.value = false;
-  emit('clear-cache')
-}
-const handleDisconnect = () => {
-  showServerPanel.value = false;
-  emit('disconnect')
-}
+const handleConnect       = () => { serverError.value = ''; emit('connect-server', {}) }
+const handleFolderSelect  = (e) => { showServerPanel.value = false; emit('folder-select', e) }
+const applyTheme          = (id) => { showThemePicker.value = false; emit('apply-theme', id) }
+const toggleSettings      = () => { showThemePicker.value = false; showSettings.value = !showSettings.value }
+const handleClearCache    = () => { showSettings.value = false; emit('clear-cache') }
+const handleDisconnect    = () => { showServerPanel.value = false; emit('disconnect') }
 
 const themeDropdownStyle = ref({})
-const btnThemeRef = ref(null)
-const updateDropdownPos = () => {
+const btnThemeRef        = ref(null)
+const updateDropdownPos  = () => {
   if (!btnThemeRef.value) return
   const r = btnThemeRef.value.getBoundingClientRect()
   themeDropdownStyle.value = {
@@ -114,12 +86,8 @@ const updateDropdownPos = () => {
     zIndex: 9999,
   }
 }
-watch(showThemePicker, (v) => {
-  if (v) updateDropdownPos()
-})
-onUnmounted(() => {
-  document.removeEventListener('click', onDocClick, true)
-})
+watch(showThemePicker, (v) => { if (v) updateDropdownPos() })
+onUnmounted(() => { document.removeEventListener('click', onDocClick, true) })
 </script>
 
 <template>
@@ -149,8 +117,7 @@ onUnmounted(() => {
       <div class="header-right">
         <div class="search-wrap" v-if="hasFolder">
           <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="11" cy="11" r="8"/>
-            <path d="m21 21-4.35-4.35"/>
+            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
           </svg>
           <input v-model="searchQuery" class="search-input" type="text"
                  :placeholder="t('search_placeholder')"
@@ -188,8 +155,7 @@ onUnmounted(() => {
         <div class="settings-wrap">
           <button class="btn-settings" @click="toggleSettings">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path
-                  d="M12 15.5A3.5 3.5 0 1 0 12 8.5a3.5 3.5 0 0 0 0 7Zm7.4-3.5a7.4 7.4 0 0 0-.15-1.53l2.02-1.57a.6.6 0 0 0 .14-.76l-1.91-3.3a.6.6 0 0 0-.73-.26l-2.38.95a7.44 7.44 0 0 0-2.65-1.54l-.36-2.54a.6.6 0 0 0-.6-.51H9.82a.6.6 0 0 0-.6.51l-.36 2.54a7.44 7.44 0 0 0-2.65 1.54l-2.38-.95a.6.6 0 0 0-.73.26l-1.9 3.3a.6.6 0 0 0 .13.76l2.02 1.57A7.4 7.4 0 0 0 4.6 12a7.4 7.4 0 0 0 .15 1.53l-2.02 1.57a.6.6 0 0 0-.14.76l1.91 3.3a.6.6 0 0 0 .73.26l2.38-.95a7.44 7.44 0 0 0 2.65 1.54l.36 2.54a.6.6 0 0 0 .6.51h3.36a.6.6 0 0 0 .6-.51l.36-2.54a7.44 7.44 0 0 0 2.65-1.54l2.38.95a.6.6 0 0 0 .73-.26l1.9-3.3a.6.6 0 0 0-.13-.76l-2.02-1.57c.09-.5.15-1.02.15-1.53Z"/>
+              <path d="M12 15.5A3.5 3.5 0 1 0 12 8.5a3.5 3.5 0 0 0 0 7Zm7.4-3.5a7.4 7.4 0 0 0-.15-1.53l2.02-1.57a.6.6 0 0 0 .14-.76l-1.91-3.3a.6.6 0 0 0-.73-.26l-2.38.95a7.44 7.44 0 0 0-2.65-1.54l-.36-2.54a.6.6 0 0 0-.6-.51H9.82a.6.6 0 0 0-.6.51l-.36 2.54a7.44 7.44 0 0 0-2.65 1.54l-2.38-.95a.6.6 0 0 0-.73.26l-1.9 3.3a.6.6 0 0 0 .13.76l2.02 1.57A7.4 7.4 0 0 0 4.6 12a7.4 7.4 0 0 0 .15 1.53l-2.02 1.57a.6.6 0 0 0-.14.76l1.91 3.3a.6.6 0 0 0 .73.26l2.38-.95a7.44 7.44 0 0 0 2.65 1.54l.36 2.54a.6.6 0 0 0 .6.51h3.36a.6.6 0 0 0 .6-.51l.36-2.54a7.44 7.44 0 0 0 2.65-1.54l2.38.95a.6.6 0 0 0 .73-.26l1.9-3.3a.6.6 0 0 0-.13-.76l-2.02-1.57c.09-.5.15-1.02.15-1.53Z"/>
             </svg>
             <span class="settings-label">{{ t('settings') }}</span>
           </button>
@@ -224,8 +190,7 @@ onUnmounted(() => {
           <button class="btn-server" @click="handleConnect" :disabled="serverLoading">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M9 18V5l12-2v13"/>
-              <circle cx="6" cy="18" r="3"/>
-              <circle cx="18" cy="16" r="3"/>
+              <circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
             </svg>
             <span v-if="serverLoading" class="sp-loading"
                   style="width:14px;height:14px;border-radius:50%;border:2px solid rgba(255,255,255,0.3);border-top-color:#fff;animation:spin 0.7s linear infinite;display:inline-block"></span>
@@ -259,12 +224,11 @@ onUnmounted(() => {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12">
               <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
             </svg>
-            {{ t('search_results', {n: filteredEntries.length}) }}
+            {{ t('search_results', { n: filteredEntries.length }) }}
           </span>
           <button class="crumb-clear-btn" @click="emit('clear-search')" :title="t('exit_search')">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12">
-              <line x1="18" y1="6" x2="6" y2="18"/>
-              <line x1="6" y1="6" x2="18" y2="18"/>
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
             </svg>
             {{ t('exit_search') }}
           </button>
@@ -291,11 +255,10 @@ onUnmounted(() => {
           </svg>
           <span class="btn-text">{{ t('refresh') }}</span>
         </button>
-        <span class="item-count">{{ t('items', {n: filteredEntries.length}) }}</span>
+        <span class="item-count">{{ t('items', { n: filteredEntries.length }) }}</span>
         <button v-if="serverMode" class="btn-toolbar btn-fav-entry" @click="emit('show-favorites')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path
-                d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
           </svg>
           <span class="btn-text">{{ t('my_favorites') }}</span>
         </button>
@@ -313,8 +276,7 @@ onUnmounted(() => {
           <div v-else class="card-icon audio-icon">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
               <path d="M9 18V5l12-2v13"/>
-              <circle cx="6" cy="18" r="3"/>
-              <circle cx="18" cy="16" r="3"/>
+              <circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
             </svg>
             <div v-if="currentSong && currentSong.name === entry.name && isPlaying" class="playing-waves">
               <span></span><span></span><span></span>
@@ -326,8 +288,14 @@ onUnmounted(() => {
             <button class="action-btn" :class="{ active: isFavorite(entry) }" :title="t('favorite')"
                     @click.stop="emit('toggle-favorite', entry)">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
-                <path
-                    d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+              </svg>
+            </button>
+            <button class="action-btn action-btn--dl" :title="t('download')"
+                    @click.stop="emit('download-song', entry)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
               </svg>
             </button>
             <button class="action-btn action-btn--add" :title="t('add_next')" @click.stop="emit('add-next', entry)">
@@ -343,8 +311,7 @@ onUnmounted(() => {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
           <circle cx="12" cy="12" r="10"/>
           <path d="M8 15s1.5 2 4 2 4-2 4-2"/>
-          <line x1="9" y1="9" x2="9.01" y2="9"/>
-          <line x1="15" y1="9" x2="15.01" y2="9"/>
+          <line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/>
         </svg>
         <p>{{ isSearchMode ? t('no_search_results') : t('no_audio_files') }}</p>
       </div>
@@ -357,993 +324,189 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-*, *::before, *::after {
-  box-sizing: border-box;
-}
-
-button {
-  -webkit-appearance: none;
-  appearance: none;
-  outline: none;
-  font-family: inherit;
-}
-
-button:focus-visible {
-  outline: 2px solid var(--t-accent1);
-  outline-offset: 2px;
-}
-
-input[type="text"], input[type="search"] {
-  -webkit-appearance: none;
-  appearance: none;
-  outline: none;
-}
-
-input[type="range"] {
-  -webkit-appearance: none;
-  appearance: none;
-  outline: none;
-}
-
-input[type="range"]::-moz-range-track {
-  height: 3px;
-  border-radius: 999px;
-  background: var(--t-border);
-  border: none;
-}
-
-input[type="range"]::-moz-range-thumb {
-  -moz-appearance: none;
-  appearance: none;
-  width: 13px;
-  height: 13px;
-  border-radius: 50%;
-  background: var(--t-accent1);
-  border: none;
-  cursor: pointer;
-  box-shadow: 0 0 6px var(--t-disc-glow);
-}
-
-select {
-  -webkit-appearance: none;
-  appearance: none;
-  outline: none;
-}
+*,*::before,*::after { box-sizing: border-box; }
+button { -webkit-appearance: none; appearance: none; outline: none; font-family: inherit; }
+button:focus-visible { outline: 2px solid var(--t-accent1); outline-offset: 2px; }
+input[type="text"],input[type="search"] { -webkit-appearance: none; appearance: none; outline: none; }
+input[type="range"] { -webkit-appearance: none; appearance: none; outline: none; }
+input[type="range"]::-moz-range-track { height: 3px; border-radius: 999px; background: var(--t-border); border: none; }
+input[type="range"]::-moz-range-thumb { -moz-appearance: none; appearance: none; width: 13px; height: 13px; border-radius: 50%; background: var(--t-accent1); border: none; cursor: pointer; box-shadow: 0 0 6px var(--t-disc-glow); }
+select { -webkit-appearance: none; appearance: none; outline: none; }
 
 .browser-container {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: var(--minibar-h, 0px);
-  z-index: 1;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  transition: bottom 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  position: absolute; top: 0; left: 0; right: 0; bottom: var(--minibar-h, 0px);
+  z-index: 1; display: flex; flex-direction: column; overflow: hidden;
+  transition: bottom 0.3s cubic-bezier(0.16,1,0.3,1);
 }
-
 .header {
-  position: relative;
-  z-index: 100;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 28px;
-  height: 62px;
-  min-height: 62px;
+  position: relative; z-index: 100; display: flex; align-items: center;
+  justify-content: space-between; padding: 0 28px; height: 62px; min-height: 62px;
   border-bottom: 1px solid var(--t-border);
-  background: var(--t-bg-glass, rgba(10, 10, 30, 0.88));
-  -webkit-backdrop-filter: blur(20px) saturate(1.3);
-  backdrop-filter: blur(20px) saturate(1.3);
-  flex-shrink: 0;
-  gap: 16px;
-  transition: border-color 0.4s, background 0.4s;
+  background: var(--t-bg-glass, rgba(10,10,30,0.88));
+  -webkit-backdrop-filter: blur(20px) saturate(1.3); backdrop-filter: blur(20px) saturate(1.3);
+  flex-shrink: 0; gap: 16px; transition: border-color 0.4s, background 0.4s;
 }
-
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-shrink: 0;
-}
-
+.header-left { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
 .btn-server-back {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
-  border: 1px solid var(--t-border);
-  background: var(--t-overlay);
-  color: var(--t-text2);
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.btn-server-back svg {
-  width: 15px;
-  height: 15px;
-}
-
-.btn-server-back:hover {
-  border-color: var(--t-accent1);
-  color: var(--t-accent1);
-  background: color-mix(in srgb, var(--t-accent1) 10%, transparent);
-}
-
-.logo-area {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-shrink: 0;
-}
-
-.logo-icon {
-  width: 28px;
-  height: 28px;
-  color: var(--t-accent1);
-  filter: drop-shadow(0 0 6px var(--t-accent1));
-  transition: color 0.4s, filter 0.4s;
-}
-
-.logo-text {
-  font-family: 'Orbitron', monospace, sans-serif;
-  font-size: 1.12rem;
-  font-weight: 700;
-  letter-spacing: 3px;
-  color: var(--t-text);
-}
-
-.logo-accent {
-  color: var(--t-accent1);
-  transition: color 0.4s;
-}
-
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex: 1;
-  justify-content: flex-end;
-}
-
-.search-wrap {
-  position: relative;
-  width: min(260px, 32vw);
-}
-
-.search-icon {
-  position: absolute;
-  left: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 14px;
-  height: 14px;
-  color: var(--t-text3);
-  pointer-events: none;
-}
-
-.search-input {
-  width: 100%;
-  padding: 8px 14px 8px 36px;
-  background: var(--t-overlay);
-  border: 1px solid var(--t-border);
-  border-radius: 999px;
-  color: var(--t-text);
-  font-family: inherit;
-  font-size: 0.88rem;
-  outline: none;
-  transition: border-color 0.3s, box-shadow 0.3s;
-}
-
-.search-input::placeholder {
-  color: var(--t-text3);
-}
-
-.search-input:focus {
-  border-color: var(--t-accent1);
-  box-shadow: 0 0 16px color-mix(in srgb, var(--t-accent1) 20%, transparent);
-}
-
-.theme-wrap {
-  position: relative;
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.btn-theme {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 7px 14px;
-  border-radius: 20px;
-  background: var(--t-overlay);
-  border: 1px solid var(--t-border);
-  color: var(--t-text2);
-  font-family: inherit;
-  font-size: 0.87rem;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: all 0.25s;
-}
-
-.btn-theme:hover {
-  border-color: var(--t-accent1);
-  color: var(--t-text);
-}
-
-.theme-icon {
-  font-size: 1rem;
-}
-
-.theme-label {
-  font-weight: 500;
-}
-
-.theme-chevron {
-  width: 14px;
-  height: 14px;
-  transition: transform 0.25s;
-}
-
-.theme-chevron.open {
-  transform: rotate(180deg);
-}
-
-.settings-wrap {
-  position: relative;
-}
-
-.btn-settings {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 7px 12px;
-  border-radius: 18px;
-  border: 1px solid var(--t-border);
-  background: var(--t-overlay);
-  color: var(--t-text2);
-  font-family: inherit;
-  font-size: 0.85rem;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.btn-settings svg {
-  width: 14px;
-  height: 14px;
-}
-
-.btn-settings:hover {
-  border-color: var(--t-accent1);
-  color: var(--t-accent1);
-  background: color-mix(in srgb, var(--t-accent1) 8%, transparent);
-}
-
-.dropdown-title {
-  font-size: 0.65rem;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  color: var(--t-text3);
-  padding: 4px 10px 8px;
-  font-family: 'Orbitron', monospace;
-}
-
-.dropdown-enter-active {
-  animation: dropDown 0.2s ease;
-}
-
-.dropdown-leave-active {
-  animation: dropDown 0.15s ease reverse;
-}
-
-@keyframes dropDown {
-  from {
-    opacity: 0;
-    transform: translateY(-8px) scale(0.96)
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1)
-  }
-}
-
-.welcome-screen {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px 20px calc(20px + var(--minibar-h, 0px));
-}
-
-.welcome-inner {
-  text-align: center;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 24px;
-  max-width: 420px;
-}
-
-.vinyl-disc {
-  width: min(190px, 42vw);
-  height: min(190px, 42vw);
-  border-radius: 50%;
-  background: radial-gradient(circle, #1a1a2e 30%, #0a0a15 60%, #1a1a2e 100%);
-  border: 2px solid var(--t-border);
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  animation: vinylSpin 10s linear infinite;
-  box-shadow: 0 0 60px color-mix(in srgb, var(--t-accent1) 18%, transparent), 0 0 120px color-mix(in srgb, var(--t-accent2) 10%, transparent);
-}
-
-@keyframes vinylSpin {
-  from {
-    transform: rotate(0deg)
-  }
-  to {
-    transform: rotate(360deg)
-  }
-}
-
-.vinyl-groove {
-  position: absolute;
-  border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.vinyl-groove:nth-child(1) {
-  width: 86%;
-  height: 86%
-}
-
-.vinyl-groove:nth-child(2) {
-  width: 72%;
-  height: 72%
-}
-
-.vinyl-groove:nth-child(3) {
-  width: 57%;
-  height: 57%
-}
-
-.vinyl-groove:nth-child(4) {
-  width: 40%;
-  height: 40%
-}
-
-.vinyl-groove:nth-child(5) {
-  width: 24%;
-  height: 24%
-}
-
-.vinyl-center {
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  background: var(--t-play-bg);
-  box-shadow: 0 0 18px var(--t-disc-glow);
-  z-index: 1;
-}
-
-.welcome-title {
-  font-family: 'Orbitron', monospace, sans-serif;
-  font-size: clamp(1.3rem, 4.5vw, 2.2rem);
-  font-weight: 700;
-  background: var(--t-title-grad);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  color: transparent;
-  background-clip: text;
-  letter-spacing: 1px;
-  line-height: 1.2;
-}
-
-.welcome-sub {
-  color: var(--t-text3);
-  font-size: 0.9rem;
-  letter-spacing: 0.5px;
-}
-
-.welcome-btns {
-  display: flex;
-  gap: 16px;
-  flex-wrap: wrap;
-  justify-content: center;
-}
-
-.btn-select {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 15px 32px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--t-accent1) 14%, transparent);
-  border: 1px solid color-mix(in srgb, var(--t-accent1) 50%, transparent);
-  color: var(--t-accent1);
-  font-family: 'Orbitron', monospace, sans-serif;
-  font-size: 0.75rem;
-  letter-spacing: 2px;
-  cursor: pointer;
-  transition: all 0.3s;
-  box-shadow: 0 0 20px color-mix(in srgb, var(--t-accent1) 10%, transparent);
-}
-
-.btn-select svg {
-  width: 16px;
-  height: 16px;
-}
-
-.btn-select:hover {
-  background: color-mix(in srgb, var(--t-accent1) 22%, transparent);
-  border-color: var(--t-accent1);
-  box-shadow: 0 0 40px color-mix(in srgb, var(--t-accent1) 28%, transparent);
-  transform: translateY(-2px) scale(1.02);
-}
-
-.btn-server {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  padding: 15px 32px;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--t-accent2) 50%, transparent);
-  background: color-mix(in srgb, var(--t-accent2) 14%, transparent);
-  color: var(--t-accent2);
-  font-size: 0.75rem;
-  font-weight: 600;
-  font-family: 'Orbitron', monospace, sans-serif;
-  letter-spacing: 2px;
-  cursor: pointer;
-  transition: all 0.3s;
-  box-shadow: 0 0 20px color-mix(in srgb, var(--t-accent2) 10%, transparent);
-}
-
-.btn-server:disabled {
-  opacity: 0.65;
-  cursor: not-allowed;
-}
-
-.btn-server svg {
-  width: 16px;
-  height: 16px;
-}
-
-.btn-server:not(:disabled):hover {
-  background: color-mix(in srgb, var(--t-accent2) 22%, transparent);
-  border-color: var(--t-accent2);
-  box-shadow: 0 0 40px color-mix(in srgb, var(--t-accent2) 28%, transparent);
-  transform: translateY(-2px) scale(1.02);
-}
-
-.error-msg {
-  color: #ff5555;
-  font-size: 0.85rem;
-}
-
-.sp-loading {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  border: 2px solid rgba(0, 0, 0, 0.3);
-  border-top-color: rgba(0, 0, 0, 0.8);
-  animation: spin 0.7s linear infinite;
-}
-
-.sp-error {
-  color: #ff6b6b;
-  font-size: 0.8rem;
-  margin: 8px 0 0;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg)
-  }
-}
-
-.file-browser {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  padding: 0 20px;
-  min-height: 0;
-}
-
-.breadcrumb {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 4px;
-  padding: 10px 0 5px;
-  flex-shrink: 0;
-}
-
-.crumb {
-  color: var(--t-text3);
-  font-size: 0.8rem;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 8px;
-  border-radius: 6px;
-  transition: all 0.18s;
-  max-width: 130px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.crumb:hover {
-  color: var(--t-accent1);
-  background: color-mix(in srgb, var(--t-accent1) 8%, transparent);
-}
-
-.crumb-active {
-  color: var(--t-accent1);
-  cursor: default;
-  font-weight: 600;
-}
-
-.crumb-search {
-  max-width: 220px;
-  color: var(--t-accent2);
-}
-
-.crumb-clear-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  margin-left: 4px;
-  padding: 3px 10px;
-  border-radius: 12px;
-  border: 1px solid color-mix(in srgb, var(--t-accent2) 35%, transparent);
-  background: color-mix(in srgb, var(--t-accent2) 8%, transparent);
-  color: var(--t-accent2);
-  font-family: inherit;
-  font-size: 0.74rem;
-  cursor: pointer;
-  transition: all 0.2s;
-  white-space: nowrap;
-}
-
-.crumb-clear-btn:hover {
-  background: color-mix(in srgb, var(--t-accent2) 18%, transparent);
-  border-color: var(--t-accent2);
-}
-
-.crumb-sep {
-  color: var(--t-text3);
-  font-size: 0.8rem;
-  opacity: 0.5;
-}
-
-.toolbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 0 10px;
-  flex-shrink: 0;
-}
-
-.btn-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 6px 12px;
-  background: var(--t-overlay);
-  border: 1px solid var(--t-border);
-  border-radius: 8px;
-  color: var(--t-text2);
-  font-family: inherit;
-  font-size: 0.83rem;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: all 0.2s;
-}
-
-.btn-toolbar svg {
-  width: 13px;
-  height: 13px;
-  flex-shrink: 0;
-}
-
-.btn-toolbar:hover {
-  border-color: var(--t-accent1);
-  color: var(--t-accent1);
-  background: color-mix(in srgb, var(--t-accent1) 8%, transparent);
-}
-
-.btn-fav-entry {
-  border-color: color-mix(in srgb, var(--t-accent4) 40%, transparent);
-  color: var(--t-accent4);
-}
-
-.btn-fav-entry:hover {
-  border-color: var(--t-accent4);
-  color: var(--t-accent4);
-  background: color-mix(in srgb, var(--t-accent4) 8%, transparent);
-}
-
-.item-count {
-  margin-left: auto;
-  color: var(--t-text3);
-  font-size: 0.78rem;
-  letter-spacing: 0.5px;
-}
-
-.file-list {
-  flex: 1;
-  overflow-y: auto;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  padding: 4px 0 28px;
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--t-border) 60%, transparent) transparent;
-}
-
-.file-list::-webkit-scrollbar {
-  width: 4px;
-}
-
-.file-list::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--t-border) 60%, transparent);
-  border-radius: 2px;
-}
-
-.file-row {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 11px 14px;
-  background: var(--t-bg-card);
-  border: 1px solid color-mix(in srgb, var(--t-border) 70%, transparent);
-  border-radius: 12px;
-  cursor: pointer;
-  transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.file-row:hover {
-  background: color-mix(in srgb, var(--t-accent1) 7%, transparent);
-  border-color: color-mix(in srgb, var(--t-accent1) 40%, transparent);
-  transform: translateX(4px);
-  box-shadow: 0 2px 12px color-mix(in srgb, var(--t-accent1) 8%, transparent);
-}
-
-.folder-card:hover {
-  background: color-mix(in srgb, var(--t-folder-clr) 7%, transparent);
-  border-color: color-mix(in srgb, var(--t-folder-clr) 35%, transparent);
-}
-
-.card-icon {
-  width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 10px;
-  position: relative;
-  flex-shrink: 0;
-}
-
-.folder-icon {
-  background: color-mix(in srgb, var(--t-folder-bg) 80%, transparent);
-  color: var(--t-folder-clr);
-}
-
-.audio-icon {
-  background: color-mix(in srgb, var(--t-audio-bg) 80%, transparent);
-  color: var(--t-audio-clr);
-}
-
-.card-icon svg {
-  width: 20px;
-  height: 20px;
-}
-
-.card-name {
-  flex: 1;
-  color: var(--t-text2);
-  font-size: 0.88rem;
-  font-weight: 500;
-  line-height: 1.35;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
-}
-
-.audio-card .card-name {
-  color: var(--t-text);
-}
-
-.card-ext {
-  font-size: 0.58rem;
-  padding: 2px 7px;
-  background: color-mix(in srgb, var(--t-audio-bg) 70%, transparent);
-  border-radius: 5px;
-  color: var(--t-audio-clr);
-  font-family: 'Orbitron', monospace;
-  flex-shrink: 0;
-  letter-spacing: 0.5px;
-}
-
-.card-actions {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  margin-left: 6px;
-}
-
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; border-radius: 10px; border: 1px solid var(--t-border);
+  background: var(--t-overlay); color: var(--t-text2); cursor: pointer; transition: all 0.2s;
+}
+.btn-server-back svg { width: 15px; height: 15px; }
+.btn-server-back:hover { border-color: var(--t-accent1); color: var(--t-accent1); background: color-mix(in srgb, var(--t-accent1) 10%, transparent); }
+.logo-area { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.logo-icon { width: 28px; height: 28px; color: var(--t-accent1); filter: drop-shadow(0 0 6px var(--t-accent1)); transition: color 0.4s, filter 0.4s; }
+.logo-text { font-family: 'Orbitron', monospace, sans-serif; font-size: 1.12rem; font-weight: 700; letter-spacing: 3px; color: var(--t-text); }
+.logo-accent { color: var(--t-accent1); transition: color 0.4s; }
+.header-right { display: flex; align-items: center; gap: 12px; flex: 1; justify-content: flex-end; }
+
+.search-wrap { position: relative; width: min(260px, 32vw); }
+.search-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 14px; height: 14px; color: var(--t-text3); pointer-events: none; }
+.search-input { width: 100%; padding: 8px 14px 8px 36px; background: var(--t-overlay); border: 1px solid var(--t-border); border-radius: 999px; color: var(--t-text); font-family: inherit; font-size: 0.88rem; outline: none; transition: border-color 0.3s, box-shadow 0.3s; }
+.search-input::placeholder { color: var(--t-text3); }
+.search-input:focus { border-color: var(--t-accent1); box-shadow: 0 0 16px color-mix(in srgb, var(--t-accent1) 20%, transparent); }
+
+.theme-wrap { position: relative; display: flex; gap: 8px; align-items: center; }
+.btn-theme { display: flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 20px; background: var(--t-overlay); border: 1px solid var(--t-border); color: var(--t-text2); font-family: inherit; font-size: 0.87rem; cursor: pointer; white-space: nowrap; transition: all 0.25s; }
+.btn-theme:hover { border-color: var(--t-accent1); color: var(--t-text); }
+.theme-icon { font-size: 1rem; }
+.theme-label { font-weight: 500; }
+.theme-chevron { width: 14px; height: 14px; transition: transform 0.25s; }
+.theme-chevron.open { transform: rotate(180deg); }
+
+.settings-wrap { position: relative; }
+.btn-settings { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 18px; border: 1px solid var(--t-border); background: var(--t-overlay); color: var(--t-text2); font-family: inherit; font-size: 0.85rem; cursor: pointer; transition: all 0.2s; }
+.btn-settings svg { width: 14px; height: 14px; }
+.btn-settings:hover { border-color: var(--t-accent1); color: var(--t-accent1); background: color-mix(in srgb, var(--t-accent1) 8%, transparent); }
+
+.dropdown-title { font-size: 0.65rem; letter-spacing: 2px; text-transform: uppercase; color: var(--t-text3); padding: 4px 10px 8px; font-family: 'Orbitron', monospace; }
+.dropdown-enter-active { animation: dropDown 0.2s ease; }
+.dropdown-leave-active { animation: dropDown 0.15s ease reverse; }
+@keyframes dropDown { from { opacity:0; transform: translateY(-8px) scale(0.96) } to { opacity:1; transform: translateY(0) scale(1) } }
+
+.welcome-screen { flex: 1; display: flex; align-items: center; justify-content: center; padding: 20px 20px calc(20px + var(--minibar-h, 0px)); }
+.welcome-inner { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 24px; max-width: 420px; }
+.vinyl-disc { width: min(190px,42vw); height: min(190px,42vw); border-radius: 50%; background: radial-gradient(circle,#1a1a2e 30%,#0a0a15 60%,#1a1a2e 100%); border: 2px solid var(--t-border); position: relative; display: flex; align-items: center; justify-content: center; animation: vinylSpin 10s linear infinite; box-shadow: 0 0 60px color-mix(in srgb, var(--t-accent1) 18%, transparent), 0 0 120px color-mix(in srgb, var(--t-accent2) 10%, transparent); }
+@keyframes vinylSpin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }
+.vinyl-groove { position: absolute; border-radius: 50%; border: 1px solid rgba(255,255,255,0.06); }
+.vinyl-groove:nth-child(1){width:86%;height:86%}.vinyl-groove:nth-child(2){width:72%;height:72%}.vinyl-groove:nth-child(3){width:57%;height:57%}.vinyl-groove:nth-child(4){width:40%;height:40%}.vinyl-groove:nth-child(5){width:24%;height:24%}
+.vinyl-center { width: 30px; height: 30px; border-radius: 50%; background: var(--t-play-bg); box-shadow: 0 0 18px var(--t-disc-glow); z-index: 1; }
+.welcome-title { font-family: 'Orbitron', monospace, sans-serif; font-size: clamp(1.3rem,4.5vw,2.2rem); font-weight: 700; background: var(--t-title-grad); -webkit-background-clip: text; -webkit-text-fill-color: transparent; color: transparent; background-clip: text; letter-spacing: 1px; line-height: 1.2; }
+.welcome-sub { color: var(--t-text3); font-size: 0.9rem; letter-spacing: 0.5px; }
+.welcome-btns { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; }
+.btn-select { display: flex; align-items: center; gap: 10px; padding: 15px 32px; border-radius: 999px; background: color-mix(in srgb, var(--t-accent1) 14%, transparent); border: 1px solid color-mix(in srgb, var(--t-accent1) 50%, transparent); color: var(--t-accent1); font-family: 'Orbitron', monospace, sans-serif; font-size: 0.75rem; letter-spacing: 2px; cursor: pointer; transition: all 0.3s; box-shadow: 0 0 20px color-mix(in srgb, var(--t-accent1) 10%, transparent); }
+.btn-select svg { width: 16px; height: 16px; }
+.btn-select:hover { background: color-mix(in srgb, var(--t-accent1) 22%, transparent); border-color: var(--t-accent1); box-shadow: 0 0 40px color-mix(in srgb, var(--t-accent1) 28%, transparent); transform: translateY(-2px) scale(1.02); }
+.btn-server { display: inline-flex; align-items: center; gap: 10px; padding: 15px 32px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--t-accent2) 50%, transparent); background: color-mix(in srgb, var(--t-accent2) 14%, transparent); color: var(--t-accent2); font-size: 0.75rem; font-weight: 600; font-family: 'Orbitron', monospace, sans-serif; letter-spacing: 2px; cursor: pointer; transition: all 0.3s; box-shadow: 0 0 20px color-mix(in srgb, var(--t-accent2) 10%, transparent); }
+.btn-server:disabled { opacity: 0.65; cursor: not-allowed; }
+.btn-server svg { width: 16px; height: 16px; }
+.btn-server:not(:disabled):hover { background: color-mix(in srgb, var(--t-accent2) 22%, transparent); border-color: var(--t-accent2); box-shadow: 0 0 40px color-mix(in srgb, var(--t-accent2) 28%, transparent); transform: translateY(-2px) scale(1.02); }
+.error-msg { color: #ff5555; font-size: 0.85rem; }
+.sp-loading { width: 14px; height: 14px; border-radius: 50%; border: 2px solid rgba(0,0,0,0.3); border-top-color: rgba(0,0,0,0.8); animation: spin 0.7s linear infinite; }
+.sp-error { color: #ff6b6b; font-size: 0.8rem; margin: 8px 0 0; }
+@keyframes spin { to { transform: rotate(360deg) } }
+
+.file-browser { flex: 1; display: flex; flex-direction: column; overflow: hidden; padding: 0 20px; min-height: 0; }
+.breadcrumb { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; padding: 10px 0 5px; flex-shrink: 0; }
+.crumb { color: var(--t-text3); font-size: 0.8rem; cursor: pointer; display: flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 6px; transition: all 0.18s; max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.crumb:hover { color: var(--t-accent1); background: color-mix(in srgb, var(--t-accent1) 8%, transparent); }
+.crumb-active { color: var(--t-accent1); cursor: default; font-weight: 600; }
+.crumb-search { max-width: 220px; color: var(--t-accent2); }
+.crumb-clear-btn { display: inline-flex; align-items: center; gap: 5px; margin-left: 4px; padding: 3px 10px; border-radius: 12px; border: 1px solid color-mix(in srgb, var(--t-accent2) 35%, transparent); background: color-mix(in srgb, var(--t-accent2) 8%, transparent); color: var(--t-accent2); font-family: inherit; font-size: 0.74rem; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
+.crumb-clear-btn:hover { background: color-mix(in srgb, var(--t-accent2) 18%, transparent); border-color: var(--t-accent2); }
+.crumb-sep { color: var(--t-text3); font-size: 0.8rem; opacity: 0.5; }
+
+.toolbar { display: flex; align-items: center; gap: 8px; padding: 6px 0 10px; flex-shrink: 0; }
+.btn-toolbar { display: flex; align-items: center; gap: 5px; padding: 6px 12px; background: var(--t-overlay); border: 1px solid var(--t-border); border-radius: 8px; color: var(--t-text2); font-family: inherit; font-size: 0.83rem; cursor: pointer; white-space: nowrap; transition: all 0.2s; }
+.btn-toolbar svg { width: 13px; height: 13px; flex-shrink: 0; }
+.btn-toolbar:hover { border-color: var(--t-accent1); color: var(--t-accent1); background: color-mix(in srgb, var(--t-accent1) 8%, transparent); }
+.btn-fav-entry { border-color: color-mix(in srgb, var(--t-accent4) 40%, transparent); color: var(--t-accent4); }
+.btn-fav-entry:hover { border-color: var(--t-accent4); color: var(--t-accent4); background: color-mix(in srgb, var(--t-accent4) 8%, transparent); }
+.item-count { margin-left: auto; color: var(--t-text3); font-size: 0.78rem; letter-spacing: 0.5px; }
+
+.file-list { flex: 1; overflow-y: auto; min-height: 0; display: flex; flex-direction: column; gap: 3px; padding: 4px 0 28px; scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--t-border) 60%, transparent) transparent; }
+.file-list::-webkit-scrollbar { width: 4px; }
+.file-list::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--t-border) 60%, transparent); border-radius: 2px; }
+.file-row { position: relative; display: flex; align-items: center; gap: 12px; padding: 11px 14px; background: var(--t-bg-card); border: 1px solid color-mix(in srgb, var(--t-border) 70%, transparent); border-radius: 12px; cursor: pointer; transition: all 0.18s cubic-bezier(0.4,0,0.2,1); }
+.file-row:hover { background: color-mix(in srgb, var(--t-accent1) 7%, transparent); border-color: color-mix(in srgb, var(--t-accent1) 40%, transparent); transform: translateX(4px); box-shadow: 0 2px 12px color-mix(in srgb, var(--t-accent1) 8%, transparent); }
+.folder-card:hover { background: color-mix(in srgb, var(--t-folder-clr) 7%, transparent); border-color: color-mix(in srgb, var(--t-folder-clr) 35%, transparent); }
+.card-icon { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border-radius: 10px; position: relative; flex-shrink: 0; }
+.folder-icon { background: color-mix(in srgb, var(--t-folder-bg) 80%, transparent); color: var(--t-folder-clr); }
+.audio-icon { background: color-mix(in srgb, var(--t-audio-bg) 80%, transparent); color: var(--t-audio-clr); }
+.card-icon svg { width: 20px; height: 20px; }
+.card-name { flex: 1; color: var(--t-text2); font-size: 0.88rem; font-weight: 500; line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.audio-card .card-name { color: var(--t-text); }
+.card-ext { font-size: 0.58rem; padding: 2px 7px; background: color-mix(in srgb, var(--t-audio-bg) 70%, transparent); border-radius: 5px; color: var(--t-audio-clr); font-family: 'Orbitron', monospace; flex-shrink: 0; letter-spacing: 0.5px; }
+.card-actions { display: flex; align-items: center; gap: 2px; margin-left: 6px; }
 .action-btn {
-  width: 30px;
-  height: 30px;
-  border-radius: 7px;
-  border: none;
+  width: 30px; height: 30px; border-radius: 7px; border: none;
   background: transparent;
   color: var(--t-text3);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: color 0.18s, background 0.18s, transform 0.15s;
+  display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: color 0.18s, background 0.18s, transform 0.15s;
 }
-
-.action-btn svg {
-  width: 16px;
-  height: 16px;
-}
-
+.action-btn svg { width: 16px; height: 16px; }
 .action-btn:hover {
   color: var(--t-accent1);
   background: color-mix(in srgb, var(--t-accent1) 10%, transparent);
   transform: scale(1.12);
 }
-
 .action-btn.active {
   color: var(--t-accent3);
   background: color-mix(in srgb, var(--t-accent3) 10%, transparent);
 }
-
 .action-btn--add:hover {
   color: var(--t-accent2);
   background: color-mix(in srgb, var(--t-accent2) 10%, transparent);
 }
-
-.playing-waves {
-  display: flex;
-  align-items: flex-end;
-  gap: 2px;
-  height: 16px;
-  flex-shrink: 0;
+.action-btn--dl:hover {
+  color: var(--t-accent3);
+  background: color-mix(in srgb, var(--t-accent3) 10%, transparent);
 }
+.playing-waves { display: flex; align-items: flex-end; gap: 2px; height: 16px; flex-shrink: 0; }
+.playing-waves span { width: 3px; background: var(--t-accent3); border-radius: 2px; animation: waveAnim 0.8s ease-in-out infinite; }
+.playing-waves span:nth-child(2){animation-delay:0.15s}.playing-waves span:nth-child(3){animation-delay:0.3s}
+@keyframes waveAnim { 0%,100%{height:3px} 50%{height:13px} }
+.empty-hint { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; color: var(--t-text3); }
+.empty-hint svg { width: 44px; height: 44px; opacity: 0.5; }
 
-.playing-waves span {
-  width: 3px;
-  background: var(--t-accent3);
-  border-radius: 2px;
-  animation: waveAnim 0.8s ease-in-out infinite;
-}
-
-.playing-waves span:nth-child(2) {
-  animation-delay: 0.15s
-}
-
-.playing-waves span:nth-child(3) {
-  animation-delay: 0.3s
-}
-
-@keyframes waveAnim {
-  0%, 100% {
-    height: 3px
-  }
-  50% {
-    height: 13px
-  }
-}
-
-.empty-hint {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 14px;
-  color: var(--t-text3);
-}
-
-.empty-hint svg {
-  width: 44px;
-  height: 44px;
-  opacity: 0.5;
-}
-
-@media (max-width: 880px) {
-  .search-wrap {
-    width: min(200px, 26vw);
-  }
-}
-
+@media (max-width: 880px) { .search-wrap { width: min(200px, 26vw); } }
 @media (max-width: 600px) {
-  .header {
-    padding: 0 14px;
-    height: 56px;
-    min-height: 56px;
-  }
-
-  .header.has-source .logo-area {
-    display: none;
-  }
-
-  .logo-text {
-    font-size: 0.9rem;
-    letter-spacing: 2px;
-  }
-
-  .logo-icon {
-    width: 22px;
-    height: 22px;
-  }
-
-  .search-wrap {
-    width: min(150px, calc(100vw - 195px));
-  }
-
-  .search-input {
-    font-size: 0.8rem;
-    padding: 6px 10px 6px 32px;
-  }
-
-  .btn-theme {
-    padding: 5px 10px;
-  }
-
-  .theme-label {
-    display: none;
-  }
-
-  .settings-label {
-    display: none;
-  }
-
-  .file-browser {
-    padding: 0 12px;
-  }
-
-  .file-row {
-    padding: 10px 11px;
-    gap: 10px;
-    border: 1px solid color-mix(in srgb, var(--t-border) 70%, transparent);
-    border-radius: 12px;
-  }
-
-  .card-icon {
-    width: 36px;
-    height: 36px;
-    border-radius: 9px;
-  }
-
-  .card-icon svg {
-    width: 18px;
-    height: 18px;
-  }
-
-  .card-name {
-    font-size: 0.85rem;
-  }
-
-  .btn-text {
-    display: none;
-  }
-
-  .breadcrumb {
-    padding: 8px 0 4px;
-  }
-
-  .welcome-inner {
-    gap: 18px;
-  }
-
-  .btn-select, .btn-server {
-    padding: 13px 24px;
-    font-size: 0.7rem;
-  }
+  .header { padding: 0 14px; height: 56px; min-height: 56px; }
+  .header.has-source .logo-area { display: none; }
+  .logo-text { font-size: 0.9rem; letter-spacing: 2px; }
+  .logo-icon { width: 22px; height: 22px; }
+  .search-wrap { width: min(150px, calc(100vw - 195px)); }
+  .search-input { font-size: 0.8rem; padding: 6px 10px 6px 32px; }
+  .btn-theme { padding: 5px 10px; }
+  .theme-label { display: none; }
+  .settings-label { display: none; }
+  .file-browser { padding: 0 12px; }
+  .file-row { padding: 10px 11px; gap: 10px; }
+  .card-icon { width: 36px; height: 36px; border-radius: 9px; }
+  .card-icon svg { width: 18px; height: 18px; }
+  .card-name { font-size: 0.85rem; }
+  .btn-text { display: none; }
+  .breadcrumb { padding: 8px 0 4px; }
+  .welcome-inner { gap: 18px; }
+  .btn-select,.btn-server { padding: 13px 24px; font-size: 0.7rem; }
 }
-
 @media (max-width: 375px) {
-  .logo-text {
-    display: none;
-  }
-
-  .search-wrap {
-    width: calc(100vw - 165px);
-  }
-
-  .btn-select, .btn-server {
-    padding: 12px 20px;
-  }
+  .logo-text { display: none; }
+  .search-wrap { width: calc(100vw - 165px); }
+  .btn-select,.btn-server { padding: 12px 20px; }
 }
 </style>
 
 <style>
-.theme-dropdown-teleport {
-  min-width: 175px;
-  background: color-mix(in srgb, var(--t-bg, #1a1a2e) 92%, white);
-  border: 1px solid var(--t-border, rgba(255, 255, 255, 0.1));
-  border-radius: 14px;
-  padding: 8px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
-}
-
-.theme-dropdown-teleport .dropdown-title {
-  font-size: 0.65rem;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  color: var(--t-text3, rgba(255, 255, 255, 0.35));
-  padding: 4px 10px 8px;
-  font-family: 'Orbitron', monospace;
-}
-
-.theme-opt-tp {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 9px 12px;
-  border-radius: 8px;
-  cursor: pointer;
-  color: var(--t-text2, rgba(255, 255, 255, 0.7));
-  font-size: 0.9rem;
-  transition: background 0.2s;
-}
-
-.theme-opt-tp:hover {
-  background: var(--t-overlay, rgba(255, 255, 255, 0.07));
-  color: var(--t-text, #fff);
-}
-
-.active-tp {
-  background: color-mix(in srgb, var(--t-accent1, #a78bfa) 12%, transparent) !important;
-  color: var(--t-accent1, #a78bfa) !important;
-}
-
-.opt-name-tp {
-  flex: 1;
-  font-weight: 500;
-}
-
-.opt-check-tp {
-  width: 13px;
-  height: 13px;
-  color: var(--t-accent1, #a78bfa);
-  flex-shrink: 0;
-}
-
-.dropdown-enter-active {
-  animation: dropDownGlobal 0.2s ease;
-}
-
-.dropdown-leave-active {
-  animation: dropDownGlobal 0.15s ease reverse;
-}
-
-@keyframes dropDownGlobal {
-  from {
-    opacity: 0;
-    transform: translateY(-8px) scale(0.96)
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1)
-  }
-}
+.theme-dropdown-teleport { min-width: 175px; background: color-mix(in srgb, var(--t-bg,#1a1a2e) 92%, white); border: 1px solid var(--t-border,rgba(255,255,255,0.1)); border-radius: 14px; padding: 8px; box-shadow: 0 20px 60px rgba(0,0,0,0.55); }
+.theme-dropdown-teleport .dropdown-title { font-size: 0.65rem; letter-spacing: 2px; text-transform: uppercase; color: var(--t-text3,rgba(255,255,255,0.35)); padding: 4px 10px 8px; font-family: 'Orbitron',monospace; }
+.theme-opt-tp { display: flex; align-items: center; gap: 9px; padding: 9px 12px; border-radius: 8px; cursor: pointer; color: var(--t-text2,rgba(255,255,255,0.7)); font-size: 0.9rem; transition: background 0.2s; }
+.theme-opt-tp:hover { background: var(--t-overlay,rgba(255,255,255,0.07)); color: var(--t-text,#fff); }
+.active-tp { background: color-mix(in srgb, var(--t-accent1,#a78bfa) 12%, transparent) !important; color: var(--t-accent1,#a78bfa) !important; }
+.opt-name-tp { flex: 1; font-weight: 500; }
+.opt-check-tp { width: 13px; height: 13px; color: var(--t-accent1,#a78bfa); flex-shrink: 0; }
+.dropdown-enter-active { animation: dropDownGlobal 0.2s ease; }
+.dropdown-leave-active { animation: dropDownGlobal 0.15s ease reverse; }
+@keyframes dropDownGlobal { from{opacity:0;transform:translateY(-8px) scale(0.96)} to{opacity:1;transform:translateY(0) scale(1)} }
 </style>

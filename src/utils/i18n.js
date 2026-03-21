@@ -41,6 +41,7 @@ const messages = {
     no_search_results: '没有找到匹配的歌曲',
     favorite: '收藏',
     add_next: '下一首播放',
+    download: '下载',
 
     // ── PlayerView ────────────────────────────────
     play_order: '顺序播放',
@@ -161,6 +162,7 @@ const messages = {
     no_search_results: 'No matching songs found',
     favorite: 'Favorite',
     add_next: 'Play Next',
+    download: 'Download',
 
     // ── PlayerView ────────────────────────────────
     play_order: 'Sequential',

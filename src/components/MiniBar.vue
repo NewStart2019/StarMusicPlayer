@@ -23,7 +23,7 @@ const emit = defineEmits([
   'open-player', 'toggle-play', 'prev', 'next',
   'toggle-fav', 'volume-change', 'cycle-play-mode',
   'load-index', 'remove-from-playlist',
-  'set-sleep-timer', 'cancel-sleep-timer',
+  'set-sleep-timer', 'cancel-sleep-timer', 'download-song',
 ])
 
 const showPlaylist = ref(false)
@@ -157,6 +157,7 @@ onUnmounted(() => window.removeEventListener('resize', checkMobile))
       @close="showPlaylist = false"
       @load-index="emit('load-index', $event)"
       @remove-from-playlist="emit('remove-from-playlist', $event)"
+      @download-song="emit('download-song', $event)"
   />
 
   <!-- 手机端：底部弹出 -->
@@ -169,6 +170,7 @@ onUnmounted(() => window.removeEventListener('resize', checkMobile))
       @close="showPlaylist = false"
       @load-index="emit('load-index', $event)"
       @remove-from-playlist="emit('remove-from-playlist', $event)"
+      @download-song="emit('download-song', $event)"
   />
 </template>
 

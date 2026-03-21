@@ -35,7 +35,7 @@ const emit = defineEmits([
   'toggle-fav', 'load-index', 'lyric-seek',
   'remove-from-playlist', 'cycle-play-mode',
   'set-sleep-timer', 'cancel-sleep-timer',
-  'seek-by',
+  'seek-by', 'download',
 ])
 
 const progressBarRef = ref(null)
@@ -420,6 +420,13 @@ watch(() => props.lyrics, async () => {
               <line x1="12" y1="11" x2="12" y2="17"/>
             </svg>
           </button>
+          <button class="ctrl-btn ctrl-dl" @click="emit('download')" :title="t('download')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+          </button>
         </div>
         <div class="secondary-row">
           <div class="volume-row">
@@ -667,6 +674,14 @@ watch(() => props.lyrics, async () => {
             </svg>
             <span>{{ t('playlist') }}</span>
           </button>
+          <button class="m-tool" @click="emit('download')" :title="t('download')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            <span>{{ t('download') }}</span>
+          </button>
         </div>
 
         <!-- Lyrics sheet -->
@@ -723,7 +738,8 @@ watch(() => props.lyrics, async () => {
           mode="side" :use-fixed="false"
           @close="showPlaylist=false"
           @load-index="emit('load-index',$event)"
-          @remove-from-playlist="emit('remove-from-playlist',$event)"/>
+          @remove-from-playlist="emit('remove-from-playlist',$event)"
+          @download-song="emit('download',$event)"/>
       <!-- Mobile playlist -->
       <PlaylistPanel
           v-if="isMobile"
@@ -731,7 +747,8 @@ watch(() => props.lyrics, async () => {
           mode="sheet"
           @close="showPlaylist=false"
           @load-index="emit('load-index',$event)"
-          @remove-from-playlist="emit('remove-from-playlist',$event)"/>
+          @remove-from-playlist="emit('remove-from-playlist',$event)"
+          @download-song="emit('download',$event)"/>
 
     </div>
   </div>
@@ -1251,6 +1268,20 @@ input[type="range"]::-moz-range-track {
 
 .ctrl-info:hover, .ctrl-info.active {
   color: var(--t-accent3)
+}
+
+.ctrl-dl {
+  width: 34px;
+  height: 34px
+}
+
+.ctrl-dl svg {
+  width: 18px;
+  height: 18px
+}
+
+.ctrl-dl:hover {
+  color: var(--t-accent2)
 }
 
 .secondary-row {

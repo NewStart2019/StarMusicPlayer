@@ -1297,6 +1297,72 @@ const closePlayer = () => {
   showPlayer.value = false
 }
 
+// =============================================
+// 下载（File System Access API，用户选择保存位置）
+// =============================================
+const downloadSong = async (song) => {
+  const target = (song && typeof song === 'object' && song.name) ? song : currentSong.value
+  if (!target) return
+
+  // 推断 MIME 类型
+  const ext = target.name.substring(target.name.lastIndexOf('.')).toLowerCase()
+  const mimeMap = {
+    '.mp3': 'audio/mpeg', '.flac': 'audio/flac', '.wav': 'audio/wav',
+    '.aac': 'audio/aac', '.ogg': 'audio/ogg', '.m4a': 'audio/mp4',
+    '.opus': 'audio/opus', '.wma': 'audio/x-ms-wma', '.ape': 'audio/ape',
+    '.alac': 'audio/alac',
+  }
+  const mime = mimeMap[ext] || 'application/octet-stream'
+
+  // 获取文件数据（Blob）
+  let blob
+  try {
+    if (target.source !== 'server' && target.fileObj) {
+      blob = target.fileObj instanceof Blob
+          ? target.fileObj
+          : new Blob([await target.fileObj.arrayBuffer()], {type: mime})
+    } else {
+      const res = await fetch(buildServerUrl(target.url || ''))
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      blob = await res.blob()
+    }
+  } catch (e) {
+    console.error('下载失败：获取文件数据出错', e)
+    return
+  }
+
+  // 优先使用 File System Access API（弹出系统另存为对话框）
+  if (typeof window.showSaveFilePicker === 'function') {
+    try {
+      const fileHandle = await window.showSaveFilePicker({
+        suggestedName: target.name,
+        types: [{
+          description: 'Audio file',
+          accept: {[mime]: [ext]},
+        }],
+      })
+      const writable = await fileHandle.createWritable()
+      await writable.write(blob)
+      await writable.close()
+      return
+    } catch (e) {
+      // 用户取消（AbortError）静默处理；其他错误降级
+      if (e?.name === 'AbortError') return
+      console.warn('showSaveFilePicker 失败，降级为普通下载', e)
+    }
+  }
+
+  // 降级：普通 <a> 下载（不支持 File System Access API 的环境）
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url;
+  a.download = target.name
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a)
+  setTimeout(() => URL.revokeObjectURL(url), 3000)
+}
+
 const updateBufferedPercent = () => {
   const audio = audioRef.value
   if (!audio) {
@@ -1530,14 +1596,13 @@ onUnmounted(() => {
          '--t-bg-image': CANVAS_THEMES.has(currentThemeId) ? 'none' : (themeVars['--t-bg-image'] || 'none')
        }">
 
-    <!-- 动态 Canvas 背景（四大自然主题） -->
     <canvas v-if="CANVAS_THEMES.has(currentThemeId)" ref="bgCanvasRef" class="bg-canvas" aria-hidden="true"/>
 
-    <!-- 静态背景装饰（daylight/cyber 主题保留） -->
     <div class="bg-orb orb1"></div>
     <div class="bg-orb orb2"></div>
     <div class="bg-orb orb3"></div>
     <div class="bg-grid"></div>
+
     <div v-if="cacheToast" class="cache-toast">{{ cacheToast }}</div>
     <Transition name="cache-modal">
       <div v-if="showCacheDialog" class="cache-modal-mask" @click="closeCacheDialog">
@@ -1549,7 +1614,6 @@ onUnmounted(() => {
       </div>
     </Transition>
 
-    <!-- 首页（文件浏览器）-->
     <FileBrowser
         ref="fileBrowserRef"
         :has-folder="hasFolder"
@@ -1582,15 +1646,14 @@ onUnmounted(() => {
         @clear-cache="clearCachedSongs"
         @toggle-favorite="toggleFavorite"
         @add-next="addSongToNext"
+        @download-song="downloadSong"
     />
 
     <!-- 我的收藏面板 -->
     <Transition name="fav-slide">
       <div v-if="showFavorites" class="fav-panel"
-           @touchstart="onFavTouchStart"
-           @touchmove="onFavTouchMove"
-           @touchend="onFavTouchEnd"
-           @touchcancel="onFavTouchEnd">
+           @touchstart="onFavTouchStart" @touchmove="onFavTouchMove"
+           @touchend="onFavTouchEnd" @touchcancel="onFavTouchEnd">
         <div class="fav-header">
           <span class="fav-title">{{ t('my_favorites') }}</span>
           <span class="fav-count" v-if="!favLoading">{{ t('songs_count', {n: favoritesList.length}) }}</span>
@@ -1626,6 +1689,13 @@ onUnmounted(() => {
               <span class="fav-name">{{ song.name.replace(/\.[^.]+$/, '') }}</span>
               <span class="fav-ext">{{ (song.name.split('.').pop() || '').toUpperCase() }}</span>
             </div>
+            <button class="fav-dl" :title="t('download')" @click.stop="downloadSong(song)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+            </button>
             <svg class="fav-play-icon" viewBox="0 0 24 24" fill="currentColor">
               <polygon points="5,3 19,12 5,21"/>
             </svg>
@@ -1634,7 +1704,6 @@ onUnmounted(() => {
       </div>
     </Transition>
 
-    <!-- 播放页面 -->
     <Transition name="player-slide">
       <PlayerView
           v-if="showPlayer"
@@ -1674,10 +1743,10 @@ onUnmounted(() => {
           @cycle-play-mode="cyclePlayMode"
           @set-sleep-timer="setSleepTimer"
           @cancel-sleep-timer="cancelSleepTimer"
+          @download="downloadSong"
       />
     </Transition>
 
-    <!-- 底部迷你播放栏 -->
     <Transition name="minibar-slide">
       <MiniBar
           v-if="currentSong && !showPlayer"
@@ -1703,6 +1772,7 @@ onUnmounted(() => {
           @remove-from-playlist="removeFromPlaylist"
           @set-sleep-timer="setSleepTimer"
           @cancel-sleep-timer="cancelSleepTimer"
+          @download-song="downloadSong"
       />
     </Transition>
 
@@ -1732,7 +1802,6 @@ onUnmounted(() => {
   transition: background 0.5s;
 }
 
-/* ── Canvas 全屏背景 ── */
 .bg-canvas {
   position: absolute;
   inset: 0;
@@ -2141,6 +2210,34 @@ onUnmounted(() => {
   opacity: 0;
   transition: opacity 0.2s;
   flex-shrink: 0;
+}
+
+.fav-dl {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 5px;
+  border-radius: 6px;
+  color: var(--t-text3);
+  display: flex;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: all 0.18s;
+}
+
+.fav-dl svg {
+  width: 15px;
+  height: 15px;
+}
+
+.fav-item:hover .fav-dl {
+  opacity: 1;
+}
+
+.fav-dl:hover {
+  color: var(--t-accent2);
+  background: color-mix(in srgb, var(--t-accent2) 12%, transparent);
+  opacity: 1;
 }
 
 .fav-slide-enter-active {

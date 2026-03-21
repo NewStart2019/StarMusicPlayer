@@ -28,7 +28,7 @@ const props = defineProps({
   offsetBottom: {type: String, default: '0px'},
   useFixed: {type: Boolean, default: false},
 })
-const emit = defineEmits(['close', 'load-index', 'remove-from-playlist'])
+const emit = defineEmits(['close', 'load-index', 'remove-from-playlist', 'download-song'])
 
 let sheetGesture = null
 const onSheetTouchStart = (e) => {
@@ -82,6 +82,13 @@ const onSheetTouchEnd = () => {
                  @click="emit('load-index', i); emit('close')">
               <span class="pl-panel-num">{{ i + 1 }}</span>
               <span class="pl-panel-name">{{ song.name.replace(/\.[^.]+$/, '') }}</span>
+              <button class="pl-panel-dl" :title="t('download')" @click.stop="emit('download-song', song)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="7 10 12 15 17 10"/>
+                  <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+              </button>
               <button class="pl-panel-del" @click.stop="emit('remove-from-playlist', i)">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                   <line x1="18" y1="6" x2="6" y2="18"/>
@@ -119,6 +126,13 @@ const onSheetTouchEnd = () => {
                @click="emit('load-index', i); emit('close')">
             <span class="pl-panel-num">{{ i + 1 }}</span>
             <span class="pl-panel-name">{{ song.name.replace(/\.[^.]+$/, '') }}</span>
+            <button class="pl-panel-dl" :title="t('download')" @click.stop="emit('download-song', song)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+            </button>
             <button class="pl-panel-del" @click.stop="emit('remove-from-playlist', i)">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                 <line x1="18" y1="6" x2="6" y2="18"/>
@@ -244,6 +258,34 @@ const onSheetTouchEnd = () => {
 .pl-panel-del svg {
   width: 13px;
   height: 13px;
+}
+
+.pl-panel-dl {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--t-text3);
+  padding: 4px;
+  border-radius: 4px;
+  opacity: 0;
+  display: flex;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+
+.pl-panel-dl svg {
+  width: 13px;
+  height: 13px;
+}
+
+.pl-panel-item:hover .pl-panel-dl {
+  opacity: 1;
+}
+
+.pl-panel-dl:hover {
+  color: var(--t-accent2);
+  background: color-mix(in srgb, var(--t-accent2) 12%, transparent);
+  opacity: 1;
 }
 
 .pl-panel-item:hover .pl-panel-del {
